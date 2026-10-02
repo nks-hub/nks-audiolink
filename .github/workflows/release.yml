@@ -1,0 +1,77 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+      - name: Test Windows solution
+        run: dotnet test NksAudioLink.sln --configuration Release
+      - name: Publish Windows app
+        run: dotnet publish src/NksAudioLink.App/NksAudioLink.App.csproj --configuration Release --runtime win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true --output publish/windows
+      - name: Publish Windows CLI
+        run: dotnet publish src/NksAudioLink.Cli/NksAudioLink.Cli.csproj --configuration Release --runtime win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true --output publish/cli
+      - name: Add documentation and package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path publish/windows/cli -Force | Out-Null
+          Copy-Item -Path publish/cli/* -Destination publish/windows/cli -Recurse -Force
+          Copy-Item README.md, TODO.md, CHANGELOG.md, THIRD_PARTY_NOTICES.md -Destination publish/windows
+          Copy-Item docs -Destination publish/windows/docs -Recurse
+          Compress-Archive -Path publish/windows/* -DestinationPath nks-audiolink-windows-x64.zip -CompressionLevel Optimal -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64
+          path: nks-audiolink-windows-x64.zip
+          if-no-files-found: error
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+      - name: Test portable code
+        run: dotnet test tests/NksAudioLink.Tests/NksAudioLink.Tests.csproj --configuration Release
+      - name: Publish Linux server
+        run: dotnet publish src/NksAudioLink.Server/NksAudioLink.Server.csproj --configuration Release --runtime linux-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true --output publish/linux
+      - name: Add documentation and package
+        run: |
+          cp README.md TODO.md CHANGELOG.md THIRD_PARTY_NOTICES.md publish/linux/
+          cp -R docs publish/linux/docs
+          mkdir -p publish/linux/deploy
+          cp -R deploy/linux publish/linux/deploy/linux
+          tar -czf nks-audiolink-linux-x64.tar.gz -C publish/linux .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-x64
+          path: nks-audiolink-linux-x64.tar.gz
+          if-no-files-found: error
+
+  github_release:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    needs: [windows, linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      - name: Publish assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" nks-audiolink-windows-x64.zip nks-audiolink-linux-x64.tar.gz --repo "${GITHUB_REPOSITORY}" --generate-notes
