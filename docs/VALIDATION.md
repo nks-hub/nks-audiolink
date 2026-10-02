@@ -36,7 +36,7 @@ Následný profil podle `/proc` našel většinu spotřeby v ThreadPool vláknec
 | Limit otáčení 0, běžné socket dokončení | 2,37 % | 13,1 ms |
 | Limit 0, inline socket dokončení, jedno socket vlákno | 1,40 % | 5,6 ms |
 
-Všechny běhy měly nulová podtečení a pozdní rámce; odesílač nezmeškal žádný termín. Linux runtimeconfig a připravená systemd jednotka používají poslední variantu. Aktualizovaná binárka a jednotka jsou na hostiteli, ověřená jednotka prošla `systemd-analyze verify`; instalace zachovala PID živé služby i obsah lokální konfigurace. Do živého procesu zatím nová verze nebyla aplikována. Výsledek null sinku neprokazuje limit pod 2 % s fyzickým ALSA ani jeho chování při opětovném připojení.
+Všechny běhy měly nulová podtečení a pozdní rámce; odesílač nezmeškal žádný termín. Linux runtimeconfig a systemd jednotka používají poslední variantu. Aktualizovaná binárka a jednotka prošly kontrolou `systemd-analyze verify` a byly aktivovány restartem služby. Windows klient obnovil relaci během jedné sekundy; fyzický ALSA výstup přešel do RUNNING a statistiky zůstaly nulové. Lokální konfigurace zůstala zachována. Výsledek null sinku neprokazuje limit pod 2 % s fyzickým ALSA; desetiminutové měření nové verze s ALSA probíhá zvlášť.
 
 ## Zbývající ověření na hardwaru
 

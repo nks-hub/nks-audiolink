@@ -1,63 +1,99 @@
+[![CI](https://github.com/nks-hub/nks-audiolink/actions/workflows/ci.yml/badge.svg)](https://github.com/nks-hub/nks-audiolink/actions/workflows/ci.yml)
+[![Release build](https://github.com/nks-hub/nks-audiolink/actions/workflows/release.yml/badge.svg)](https://github.com/nks-hub/nks-audiolink/actions/workflows/release.yml)
+[![.NET 9](https://img.shields.io/badge/.NET-9-512BD4)](https://dotnet.microsoft.com/)
+[![Platformy](https://img.shields.io/badge/platformy-Windows%20%2B%20Linux-0078D4)](#jak-to-funguje)
+[![Licence: všechna práva vyhrazena](https://img.shields.io/badge/licence-v%C5%A1echna%20pr%C3%A1va%20vyhrazena-6B7280)](#licence)
+
 # NKS AudioLink
 
-NKS AudioLink přenáší zvuk z Windows PC po LAN na fyzickou zvukovou kartu jiného počítače. Klient je napsaný v C#/.NET 9 a zachytává zvuk přes WASAPI. Server běží v C#/.NET 9 na Linuxu a zapisuje přímo do ALSA; nevyžaduje PulseAudio ani PipeWire.
+**Zvuk z Windows PC na zvukovou kartu linuxového počítače po místní síti.** Windows klient zachytává audio přes WASAPI a posílá jej jako UDP PCM. Server je také napsaný v C#/.NET 9 a přehrává přímo přes ALSA. Na Linuxu nepotřebuje PulseAudio, PipeWire ani grafické prostředí.
 
-```text
-Windows aplikace → WASAPI → UDP PCM → jitter buffer a korekce driftu → ALSA → zvuková karta
+Projekt nabízí grafickou aplikaci pro Windows, CLI a serverovou službu systemd. Přenos používá stereo PCM S16_LE při 48 kHz v 5ms rámcích. Je určený pro důvěryhodnou LAN nebo VPN; cílem je odezva vhodná pro video, ale celková fyzická latence zatím není změřená.
+
+![NKS AudioLink ve Windows: připojení a živé statistiky](docs/screenshots/client.png)
+
+## Co umí
+
+- **Dva zdroje zvuku:** WASAPI loopback přenáší celý výstup vybraného zařízení. Režim virtuální zvukovky zachytává samostatně nainstalovaný VB-CABLE a během spojení na něj přepne výchozí výstup Windows. Lze vybrat i jiné záznamové zařízení.
+- **Přímý Linux výstup:** server zapisuje do ALSA a může běžet jako neprivilegovaná služba systemd. Pro diagnostiku nabízí také WAV a null výstup.
+- **Plynulý tok:** jitter buffer, korekce rozdílných hodin zvukových zařízení a tiché rámce udržují časovou osu. Klient se umí obnovit po výpadku serveru nebo chybě zachytávání.
+- **Ovládání a přehled:** WPF aplikace nabízí vyhledání serveru, nastavení bufferu a hlasitosti, ikonu v oznamovací oblasti a živé statistiky. CLI umí vypsat zařízení, vyhledat server, posílat zvuk a přehrát testovací tón.
+- **Kontrola přístupu:** server omezuje klienty pomocí `allowCidrs`; volitelné HMAC se sdíleným klíčem ověřuje pakety. Přenášené PCM není šifrované.
+
+VB-CABLE je ovladač [VB-Audio](https://vb-audio.com/Cable/). Není součástí AudioLinku a pro běžný WASAPI loopback není potřeba.
+
+## Jak to funguje
+
+```mermaid
+flowchart LR
+    A["Windows<br/>WPF aplikace nebo CLI"] --> B["WASAPI<br/>loopback nebo vstup"]
+    B --> C["UDP PCM<br/>5ms rámce"]
+    C --> D["Linux C# server<br/>jitter buffer a korekce driftu"]
+    D --> E["ALSA<br/>fyzická zvuková karta"]
 ```
 
-Přenos používá stereo PCM S16_LE, 48 kHz, pětimilisekundové rámce. Cílem je latence pod 100 ms pro video. Zatím chybí ověřené měření celkové latence, proto ji projekt negarantuje.
+Server obsluhuje jednu aktivní relaci. Výchozí UDP port je `7355`. Bez konfigurace přijímá jen klienta z loopbacku a používá null výstup; pro provoz v síti je nutné nastavit vlastní `allowCidrs` a ALSA zařízení. Podrobnosti formátu paketů jsou v [popisu protokolu](docs/PROTOCOL.md).
 
-## Aktuální stav
+## Rychlý start
 
-Implementované jsou protokol s volitelným HMAC, UDP server, ALSA/WAV/null výstup, Windows WASAPI klient, CLI, grafické rozhraní se statistikami a nastavením, automatické vyhledání serveru a jednotkové testy. Služba serveru běží přímo na linuxovém hostiteli přes systemd. VB-CABLE je na testovacím PC nainstalován; skutečný přenos virtuálním zařízením a obnova výchozího výstupu po odpojení i pádu aplikace byly ověřeny. Ověřená dokončení a zbývající kroky jsou v [TODO.md](TODO.md).
+### Připravené balíčky
 
-Na skutečné LAN byl ověřen pětisekundový přenos testovacího tónu do WAV: délka 5,095 s, RMS 8 484, dominantní energie na 440 Hz, bez přetečení a pozdních rámců. Nejnovější desetiminutový test instalované služby systemd měl nulová podtečení, přetečení, ztráty i pozdní rámce v klientských statistikách i závěrečném záznamu serveru. CLI po tónu posílá krátké tiché zakončení pro vyprázdnění bufferu. Windows WASAPI loopback zachytil skutečný zvuk do WAV a grafická aplikace přenáší výstup PC na fyzický ALSA výstup vzdáleného serveru. Virtuální režim byl ověřen 440Hz signálem přes CABLE Input a CABLE Output do WAV. Poslech na vzdálené zvukové kartě a fyzická celková latence dosud nejsou potvrzeny.
+Po vydání označené verze stáhněte z [GitHub Releases](https://github.com/nks-hub/nks-audiolink/releases) balíčky `nks-audiolink-windows-x64.zip` a `nks-audiolink-linux-x64.tar.gz`. Obsahují .NET runtime 9.0.20; na cílových počítačích jej není třeba instalovat zvlášť. Windows archiv obsahuje `NksAudioLink.App.exe` a CLI v adresáři `cli`.
 
-![Windows aplikace se stavem spojení a statistikami](docs/screenshots/client.png)
-
-### Latence a zátěž
-
-Při živém přenosu z grafické aplikace ukazují statistiky síťový buffer 25 ms, zpoždění ALSA 19 ms a RTT 0,5 ms. Se skutečnou periodou WASAPI 10 ms, vyrovnávací frontou klienta přibližně 15 ms a rámcováním 5 ms vychází odhad **74 ms** od zachycení po ALSA výstup. Hodnota se mění s aktuálním stavem bufferů; tento výpočet není fyzické měření celého řetězce. Zátěž aktuálního serveru při přenosu je asi 3 % jednoho jádra; plánovaný limit pod 2 % zatím nebyl splněn.
-
-| Úsek při živém přenosu (2026-10-02) | Hodnota | Zjištění |
-|---|---:|---|
-| WASAPI capture | 10 ms | Skutečná délka bufferu po spuštění |
-| Fronta klienta | ≈15 ms | Cílová hodnota, nikoli měření |
-| Rámcování | 5 ms | Formát protokolu |
-| Síť | ≈0,25 ms | Polovina naměřeného RTT 0,5 ms |
-| Jitter buffer | 25 ms | STATS serveru |
-| ALSA výstup | 19 ms | `snd_pcm_delay` |
-| **Celkem** | **≈74 ms** | **Součet; fyzická latence dosud nezměřena** |
-
-Podrobnosti ověření a jeho hranice jsou v [docs/VALIDATION.md](docs/VALIDATION.md).
-
-Samostatná zkouška na cílovém Linuxu změřila část od odeslání UDP paketu do zápisu kliknutí do WAV: **27,36–28,69 ms**, medián **28,22 ms** pro devět kliknutí při cílovém bufferu 30 ms. Odesílač i server používaly stejné monotónní hodiny a loopback síť. Toto měření nezahrnuje Windows capture, fyzickou LAN, ALSA ani receiver.
-
-## Použití
-
-Pro sestavení vyžaduje .NET SDK **9.0.318** nebo novější opravu téže řady; verzi určuje `global.json`. Na Windows sestavíte celé řešení příkazem `dotnet build NksAudioLink.sln` a spustíte testy pomocí `dotnet test NksAudioLink.sln`. Publikované aplikace obsahují potřebný runtime. Windows klient a přípravu virtuální zvukovky popisuje [docs/WINDOWS.md](docs/WINDOWS.md); Linux server a jeho službu nainstalujete podle [docs/INSTALL.md](docs/INSTALL.md).
-
-Server ve výchozím nastavení naslouchá na UDP portu 7355. Bez konfiguračního souboru přijímá pouze spojení z loopbacku a používá nulový výstup. Pro provoz v LAN vycházejte z [deploy/linux/server.json.example](deploy/linux/server.json.example), nastavte `allowCidrs` na vlastní důvěryhodnou síť a zvolte ALSA zařízení. Místní `server.json` a klíče neukládejte do repozitáře.
+Instalaci služby popisuje [linuxový návod](docs/INSTALL.md). Z rozbaleného balíčku nejprve spusťte v root shellu instalátor:
 
 ```sh
-./NksAudioLink.Server run --config /etc/nks-audiolink/server.json
-./NksAudioLink.Server devices
+sh deploy/linux/install.sh ./NksAudioLink.Server
 ```
 
-Na Windows lze bez dalšího ovladače zachytávat celý výstup vybraného zařízení přes WASAPI loopback. CLI nabízí seznam zařízení a odeslání:
+Poté podle [server.json.example](deploy/linux/server.json.example) upravte `/etc/nks-audiolink/server.json`, zejména `sink`, `allowCidrs` a případný `pskBase64`, a spusťte `systemctl enable --now nks-audiolink`. Instalátor uloží binárku a jednotku, ale službu sám nespustí ani nerestartuje. Na Windows otevřete `NksAudioLink.App.exe`, zadejte adresu serveru nebo použijte **Najít**, zvolte zdroj a stiskněte **Připojit**. Podrobný postup včetně volitelné virtuální zvukovky je v [návodu pro Windows](docs/WINDOWS.md).
+
+### Sestavení ze zdrojů
+
+Je potřeba .NET SDK **9.0.318** nebo novější oprava stejné řady podle [global.json](global.json). Na Windows:
 
 ```powershell
-dotnet run --project src/NksAudioLink.Cli -- devices
-dotnet run --project src/NksAudioLink.Cli -- discover
-dotnet run --project src/NksAudioLink.Cli -- send --server SERVER_IP --mode loopback
-dotnet run --project src/NksAudioLink.Cli -- test-tone --server SERVER_IP --seconds 5
+dotnet build NksAudioLink.sln -c Release
+dotnet test NksAudioLink.sln -c Release
+dotnet run --project src/NksAudioLink.App
 ```
 
-CLI podporuje `--port`, `--latency` (u `send`), `--device`, `--mode capture` a `--config`. Režim `capture` použijte pro záznamový endpoint virtuální zvukovky. Grafickou aplikaci spustíte z projektu `src/NksAudioLink.App`. Nabízí režim celého zvuku PC, virtuální zvukovky a jiného vstupu, nastavení serveru, portu, sdíleného klíče, hlasitosti a latence, tray a živé statistiky. Klíč se neukládá do souboru nastavení. VB-CABLE je samostatný podepsaný ovladač jiného výrobce; projekt jej nedistribuuje ani bez rozhodnutí uživatele neinstaluje.
+Server pro Linux x64 publikujte příkazem `dotnet publish src/NksAudioLink.Server/NksAudioLink.Server.csproj -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -o publish/linux-x64`. Příkazy pro běh, konfiguraci a kontrolu ALSA jsou v [instalačním návodu](docs/INSTALL.md).
 
-Konfigurace podporuje `port`, `name`, `sink`, `allowCidrs`, `pskBase64`, `idleReleaseSec` a `targetLatencyMs` na serveru a `server`, `port`, `targetLatencyMs`, `gain`, `pskBase64` na klientovi. PSK musí obsahovat nejméně 16 náhodných bajtů zakódovaných Base64. HMAC ověřuje původ paketů; zvuk není šifrovaný. Protokol popisuje [docs/PROTOCOL.md](docs/PROTOCOL.md).
+## Co je ověřené
 
-## Vývoj a licence
+| Ověření | Výsledek a hranice |
+|---|---|
+| Automatické testy | 39 testů přenositelného Core/serveru/fronty a 7 Windows integračních UDP testů prošlo. Pokrytí Core: **86,93 % řádků**, 76,01 % větví. |
+| Skutečná LAN a ALSA služba | Souvislý **600s přenos** na dosavadní živé službě: 0 podtečení, přetečení, ztrát i pozdních rámců podle klienta a závěrečných statistik serveru. Fyzický ALSA výstup byl ve stavu RUNNING. |
+| Tón a virtuální režim | Přenos 440Hz tónu z Windows na Linux do WAV trval 5,095 s, RMS 8 484, bez přetečení a pozdních rámců. Přenos přes CABLE Input a CABLE Output byl potvrzen analýzou WAV. |
+| Odhad latence UI | Při živém přenosu **≈74 ms**: WASAPI 10 ms, cílová fronta klienta ≈15 ms, rámec 5 ms, polovina RTT ≈0,25 ms, jitter buffer 25 ms a ALSA delay 19 ms. Jde o součet známých částí, nikoli o fyzické měření celého řetězce. |
+| Změřená softwarová latence | Na cílovém Linuxu vyšlo pro devět kliknutí UDP loopback → WAV **27,36–28,69 ms**, medián **28,22 ms**, při cílovém bufferu 30 ms. Test nezahrnuje Windows capture, fyzickou LAN, ALSA ani receiver. |
+| CPU | Předchozí živý přenos s fyzickou ALSA spotřeboval přibližně **3 % jednoho jádra**. Nový .NET 9.0.20 server a systemd nastavení v izolovaném null testu snížily CPU z **3,87 % na 1,40 %** bez podtečení a pozdních rámců. Nová verze je aktivní; výsledek s ALSA se právě ověřuje zvlášť. |
 
-Repozitář je zatím soukromý. Žádná veřejná licence nebyla zvolena; všechna práva vyhrazena. Při případném zveřejnění nesmí být v historii soukromé adresy, přístupové údaje, lokální konfigurace ani binární soubory cizích ovladačů.
+Stále zbývá potvrdit čistý poslech na receiveru a synchronizaci s videem, nezávisle změřit celkovou fyzickou latenci, vyzkoušet uspání PC a fyzické odpojení sítě a zopakovat dlouhý ALSA test s optimalizovanou službou. [Úplný protokol ověření](docs/VALIDATION.md) rozlišuje měření od odhadů; [TODO.md](TODO.md) sleduje zbývající fáze.
+
+## Dokumentace
+
+| Téma | Odkaz |
+|---|---|
+| Instalace, konfigurace a provoz Linux serveru | [docs/INSTALL.md](docs/INSTALL.md) |
+| Windows aplikace, CLI a volitelný VB-CABLE | [docs/WINDOWS.md](docs/WINDOWS.md) |
+| UDP protokol | [docs/PROTOCOL.md](docs/PROTOCOL.md) |
+| Testy, měření a jejich omezení | [docs/VALIDATION.md](docs/VALIDATION.md) |
+| Stav prací a historie změn | [TODO.md](TODO.md) · [CHANGELOG.md](CHANGELOG.md) |
+
+## Podpora
+
+- 📧 **E-mail:** dev@nks-hub.cz
+- 🐛 **Chyby a návrhy:** [GitHub Issues](https://github.com/nks-hub/nks-audiolink/issues)
+
+## Licence
+
+**Všechna práva vyhrazena.** Zveřejnění zdrojového kódu samo o sobě neposkytuje licenci ke kopírování, úpravám ani distribuci projektu. NAudio je samostatně licencováno pod MIT a publikované balíčky obsahují licence přibaleného .NET runtime; podrobnosti jsou v [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+---
+
+<p align="center">
+  Made with ❤️ by <a href="https://github.com/nks-hub">NKS Hub</a>
+</p>
