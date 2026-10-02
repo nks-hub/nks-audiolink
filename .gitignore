@@ -1,0 +1,17 @@
+**/bin/
+**/obj/
+.vs/
+.idea/
+*.user
+*.suo
+*.log
+*.wav
+*.zip
+*.pfx
+*.p12
+*.key
+*.pem
+*.secrets.json
+appsettings.Local.json
+server.json
+settings.json
