@@ -10,5 +10,7 @@
 - Režim již nainstalované virtuální zvukovky VB-CABLE a obnova původních výstupů Windows po odpojení nebo následujícím startu po pádu.
 - CLI pro seznam zařízení, discovery, přenos zvuku a testovací tón.
 - Workflow pro sestavení Windows x64 aplikace a Linux x64 serveru a publikaci artefaktů při tagu vydání.
+- Přibalený runtime .NET 9.0.20, reprodukovatelné SDK 9.0.318 a licence runtime v balíčcích.
+- Linux nastavení ThreadPoolu a socketů s ověřeným snížením zátěže na izolovaném null serveru; ověření fyzického ALSA po aktivaci zbývá.
 
 První vydání zůstává připravované, dokud neprojdou zbývající hardwarové a provozní kontroly uvedené v [TODO.md](TODO.md).

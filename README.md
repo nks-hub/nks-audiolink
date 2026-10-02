@@ -32,9 +32,11 @@ Při živém přenosu z grafické aplikace ukazují statistiky síťový buffer 
 
 Podrobnosti ověření a jeho hranice jsou v [docs/VALIDATION.md](docs/VALIDATION.md).
 
+Samostatná zkouška na cílovém Linuxu změřila část od odeslání UDP paketu do zápisu kliknutí do WAV: **27,36–28,69 ms**, medián **28,22 ms** pro devět kliknutí při cílovém bufferu 30 ms. Odesílač i server používaly stejné monotónní hodiny a loopback síť. Toto měření nezahrnuje Windows capture, fyzickou LAN, ALSA ani receiver.
+
 ## Použití
 
-Pro sestavení vyžaduje .NET SDK 9. Na Windows sestavíte celé řešení příkazem `dotnet build NksAudioLink.sln` a spustíte testy pomocí `dotnet test NksAudioLink.sln`. Publikované aplikace obsahují potřebný runtime. Windows klient a přípravu virtuální zvukovky popisuje [docs/WINDOWS.md](docs/WINDOWS.md); Linux server a jeho službu nainstalujete podle [docs/INSTALL.md](docs/INSTALL.md).
+Pro sestavení vyžaduje .NET SDK **9.0.318** nebo novější opravu téže řady; verzi určuje `global.json`. Na Windows sestavíte celé řešení příkazem `dotnet build NksAudioLink.sln` a spustíte testy pomocí `dotnet test NksAudioLink.sln`. Publikované aplikace obsahují potřebný runtime. Windows klient a přípravu virtuální zvukovky popisuje [docs/WINDOWS.md](docs/WINDOWS.md); Linux server a jeho službu nainstalujete podle [docs/INSTALL.md](docs/INSTALL.md).
 
 Server ve výchozím nastavení naslouchá na UDP portu 7355. Bez konfiguračního souboru přijímá pouze spojení z loopbacku a používá nulový výstup. Pro provoz v LAN vycházejte z [deploy/linux/server.json.example](deploy/linux/server.json.example), nastavte `allowCidrs` na vlastní důvěryhodnou síť a zvolte ALSA zařízení. Místní `server.json` a klíče neukládejte do repozitáře.
 

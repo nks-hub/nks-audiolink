@@ -1,6 +1,6 @@
 # Windows klient
 
-Grafická aplikace používá Windows 10 nebo novější. Vydání pro `win-x64` obsahuje .NET runtime; pro sestavení ze zdrojů je potřeba .NET SDK 9:
+Grafická aplikace používá Windows 10 nebo novější. Vydání pro `win-x64` obsahuje .NET runtime; pro sestavení ze zdrojů je potřeba .NET SDK 9.0.318 nebo novější oprava téže řady podle `global.json`:
 
 ```powershell
 dotnet run --project src/NksAudioLink.App

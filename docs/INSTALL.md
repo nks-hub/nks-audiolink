@@ -4,7 +4,7 @@ Server je konzolová aplikace v C#/.NET 9. Na Linuxu zapisuje přímo do ALSA p�
 
 ## Předpoklady
 
-- Na sestavovacím počítači je .NET SDK 9. Cílový počítač potřebuje `libasound.so.2`, systemd, skupinu `audio` a funkční ALSA zařízení. Při publikaci `--self-contained` nepotřebuje .NET runtime.
+- Na sestavovacím počítači je .NET SDK 9.0.318 nebo novější oprava téže řady podle `global.json`. Cílový počítač potřebuje `libasound.so.2`, systemd, skupinu `audio` a funkční ALSA zařízení. Při publikaci `--self-contained` nepotřebuje .NET runtime.
 - Cílový stroj přijímá UDP na zvoleném portu, výchozí je 7355. Povolte jej jen z důvěryhodné LAN nebo VPN. PCM data nejsou šifrovaná.
 - Před změnami ověřte, že vybraná zvuková karta není vyhrazena jiné aplikaci. Instalátor zařízení neotevírá a službu sám nespouští ani nerestartuje.
 
@@ -45,6 +45,14 @@ systemctl restart nks-audiolink
 ```
 
 Server otevírá ALSA až při přijetí relace. Po ukončení relace zařízení zavře. Pro krátkou izolovanou zkoušku bez zvukové karty lze server spustit ručně s `--sink null` nebo `--sink wav:/tmp/tone.wav`; WAV soubor musí být zapisovatelný uživatelem, pod nímž proces běží.
+
+### Nastavení výkonu
+
+Linux publikace nastavuje `System.Threading.ThreadPool.UnfairSemaphoreSpinLimit=0`, aby nečinná vlákna nečekala aktivním otáčením. Jednotka systemd navíc zapíná `DOTNET_SYSTEM_NET_SOCKETS_INLINE_COMPLETIONS=1` a nastavuje `DOTNET_SYSTEM_NET_SOCKETS_THREAD_COUNT=1`. Jeden UDP socket tak zpracovává síťové dokončení v jediném socket vlákně; zvukový výstup dál zapisuje samostatné přehrávací vlákno.
+
+Při izolovaném testu s null výstupem na .NET 9.0.20 tato kombinace snížila CPU z 3,87 % na 1,40 % jednoho jádra bez podtečení a pozdních rámců. Stejné měření s fyzickým ALSA zařízením a kontrola opětovného připojení ještě zbývají. Otevírání a zavírání sinku při HELLO může socket vlákno krátce zdržet. Pro vlastní srovnání lze hodnoty přepsat v drop-in jednotce a po plánovaném restartu zkontrolovat statistiky. Přímé spuštění binárky mimo systemd tyto dvě proměnné nepřebírá.
+
+Chování socket nastavení popisuje [implementace .NET 9.0.20](https://github.com/dotnet/runtime/blob/v9.0.20/src/libraries/System.Net.Sockets/src/System/Net/Sockets/SocketAsyncEngine.Unix.cs).
 
 ## Ověření
 
