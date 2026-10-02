@@ -108,6 +108,36 @@ public sealed class AudioStreamClientTests
         Assert.All(sources, source => Assert.True(source.Disposed));
     }
 
+    [Theory]
+    [InlineData(RejectReason.Busy)]
+    [InlineData(RejectReason.UnsupportedFormat)]
+    public async Task TerminalRejectDisposesCaptureAndDoesNotSendHelloAfterServerBecomesFree(RejectReason reason)
+    {
+        using var server = new RejectThenAcceptServer(reason);
+        var sources = new ConcurrentQueue<FakeSource>();
+        var client = new AudioStreamClient(Config(server.Port), (_, _) =>
+        {
+            var source = new FakeSource();
+            sources.Enqueue(source);
+            return source;
+        });
+
+        var rejected = await Assert.ThrowsAsync<ServerRejectedException>(
+            () => client.RunAsync(null, true, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(3)));
+        Assert.Equal(reason, rejected.Reason);
+        Assert.Equal(1, server.HelloCount);
+        Assert.Single(sources);
+        Assert.True(sources.Single().Disposed);
+
+        server.Release();
+        // A live sender would emit another HELLO after 400 x 5 ms; a retry
+        // would recreate capture after one second. Neither may happen.
+        await Task.Delay(2300);
+        Assert.Equal(1, server.HelloCount);
+        Assert.Equal(0, server.AcceptedAfterRelease);
+        Assert.Single(sources);
+    }
+
     private static ClientConfig Config(int port) => new() { Server = "127.0.0.1", Port = port };
 
     private static int FreePort()
@@ -201,6 +231,70 @@ public sealed class AudioStreamClientTests
         public void Dispose()
         {
             if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+            _stop.Cancel();
+            _udp.Dispose();
+            _stop.Dispose();
+            _ = _receiver;
+        }
+    }
+
+    private sealed class RejectThenAcceptServer : IDisposable
+    {
+        private readonly UdpClient _udp = new(new IPEndPoint(IPAddress.Loopback, 0));
+        private readonly CancellationTokenSource _stop = new();
+        private readonly Task _receiver;
+        private readonly RejectReason _reason;
+        private int _helloCount;
+        private int _released;
+        private int _acceptedAfterRelease;
+        public int Port => ((IPEndPoint)_udp.Client.LocalEndPoint!).Port;
+        public int HelloCount => Volatile.Read(ref _helloCount);
+        public int AcceptedAfterRelease => Volatile.Read(ref _acceptedAfterRelease);
+
+        public RejectThenAcceptServer(RejectReason reason)
+        {
+            _reason = reason;
+            _receiver = ReceiveAsync();
+        }
+
+        public void Release() => Volatile.Write(ref _released, 1);
+
+        private async Task ReceiveAsync()
+        {
+            try
+            {
+                while (!_stop.IsCancellationRequested)
+                {
+                    var packet = await _udp.ReceiveAsync(_stop.Token);
+                    if (!Protocol.TryRead(packet.Buffer, [], out var header, out var body) ||
+                        header.Type != PacketType.Hello || !HelloMessage.TryRead(body, out _)) continue;
+                    Interlocked.Increment(ref _helloCount);
+                    byte[] payload;
+                    PacketType type;
+                    if (Volatile.Read(ref _released) == 0)
+                    {
+                        type = PacketType.Reject;
+                        payload = [(byte)_reason];
+                    }
+                    else
+                    {
+                        Interlocked.Increment(ref _acceptedAfterRelease);
+                        type = PacketType.Stats;
+                        payload = new byte[StatsMessage.Size];
+                        new StatsMessage(true, 30, 20, 0, 0, 0, 0, 0, 0).Write(payload);
+                    }
+                    byte[] response = new byte[Protocol.HeaderSize + payload.Length];
+                    int length = Protocol.Write(response,
+                        new PacketHeader(type, PacketFlags.None, header.Session, 1), payload);
+                    await _udp.SendAsync(response.AsMemory(0, length), packet.RemoteEndPoint, _stop.Token);
+                }
+            }
+            catch (OperationCanceledException) { }
+            catch (ObjectDisposedException) when (_stop.IsCancellationRequested) { }
+        }
+
+        public void Dispose()
+        {
             _stop.Cancel();
             _udp.Dispose();
             _stop.Dispose();

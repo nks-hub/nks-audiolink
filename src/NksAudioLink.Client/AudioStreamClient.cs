@@ -72,6 +72,7 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
             ? new WasapiSource(deviceId, loopback)
             : sourceFactory(deviceId, loopback);
         Exception? captureFailure = null;
+        ServerRejectedException? rejectionFailure = null;
         void CaptureFailed(Exception error)
         {
             Interlocked.CompareExchange(ref captureFailure, error, null);
@@ -149,8 +150,12 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
                     }
                     else if (header.Type == PacketType.Reject)
                     {
+                        if (responseBody.Length != 1 || !Enum.IsDefined((RejectReason)responseBody[0])) continue;
                         Interlocked.Exchange(ref accepted, 0);
-                        StateChanged?.Invoke(responseBody.IsEmpty ? "Odmítnuto" : $"Odmítnuto ({responseBody[0]})");
+                        Interlocked.CompareExchange(ref rejectionFailure,
+                            new ServerRejectedException((RejectReason)responseBody[0]), null);
+                        runStop.Cancel();
+                        StateChanged?.Invoke("Odmítnuto");
                     }
                 }
             }
@@ -185,6 +190,7 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
                             ConnectionInterrupted();
                         }
                         ticks++;
+                        if (runToken.IsCancellationRequested) break;
                         if (ticks % 400 == 0)
                         {
                             int helloSize = new HelloMessage(48000, 2, 1, 5, (ushort)config.TargetLatencyMs, Environment.MachineName).Write(body);
@@ -235,6 +241,8 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
             }) { IsBackground = true, Priority = ThreadPriority.Highest, Name = "NKS AudioLink sender" };
             sender.Start();
             await senderDone.Task;
+            if (Volatile.Read(ref rejectionFailure) is { } rejection && !cancellationToken.IsCancellationRequested)
+                throw rejection;
             if (Volatile.Read(ref captureFailure) is { } failure && !cancellationToken.IsCancellationRequested)
                 throw new CaptureDeviceException(failure);
         }

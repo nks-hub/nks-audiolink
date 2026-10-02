@@ -229,7 +229,13 @@ public partial class MainWindow : Window
                 SetStatus(state, "Pokouší se znovu navázat spojení. Přenos lze odpojit.");
         });
         _streamTask = client.RunAsync(device.Id, LoopbackRadio.IsChecked == true, _streamStop.Token);
+        bool serverRejected = false;
         try { await _streamTask; }
+        catch (ServerRejectedException ex)
+        {
+            serverRejected = true;
+            SetStatus("Odmítnuto", ex.Message);
+        }
         catch (Exception ex) { if (!_closing) SetStatus("Chyba přenosu", ex.Message); }
         finally
         {
@@ -245,7 +251,7 @@ public partial class MainWindow : Window
             ServerCard.IsEnabled = SourceCard.IsEnabled = LatencySlider.IsEnabled = true;
             ConnectButton.Content = "Připojit";
             ConnectButton.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(21, 127, 117));
-            if (StatusText.Text is not ("Chyba přenosu" or "Obnova zvukovky selhala"))
+            if (!serverRejected && StatusText.Text is not ("Chyba přenosu" or "Obnova zvukovky selhala"))
                 SetStatus("Odpojeno", "Přenos je zastaven.");
             if (_trayConnect is not null) _trayConnect.Text = "Připojit";
         }
