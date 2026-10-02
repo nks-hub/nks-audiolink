@@ -1,16 +1,16 @@
-# Instalace serveru na Linuxu
+# Install the Linux server
 
-Server je konzolová aplikace v C#/.NET 9. Na Linuxu zapisuje přímo do ALSA přes `libasound.so.2`; PulseAudio ani PipeWire nepotřebuje. Postup cílí na Debian/Proxmox hostitele x86_64 s fyzickou zvukovou kartou dostupnou přes `/dev/snd`.
+The server is a C#/.NET 9 console application. On Linux, it writes directly to ALSA through `libasound.so.2`. It does not require PulseAudio or PipeWire. These instructions target an x86_64 Debian or Proxmox host with a physical sound device available through `/dev/snd`.
 
-## Předpoklady
+## Requirements
 
-- Na sestavovacím počítači je .NET SDK 9.0.318 nebo novější oprava téže řady podle `global.json`. Cílový počítač potřebuje `libasound.so.2`, systemd, skupinu `audio` a funkční ALSA zařízení. Při publikaci `--self-contained` nepotřebuje .NET runtime.
-- Cílový stroj přijímá UDP na zvoleném portu, výchozí je 7355. Povolte jej jen z důvěryhodné LAN nebo VPN. PCM data nejsou šifrovaná.
-- Před změnami ověřte, že vybraná zvuková karta není vyhrazena jiné aplikaci. Instalátor zařízení neotevírá a službu sám nespouští ani nerestartuje.
+- The build machine needs .NET SDK 9.0.318 or a later patch in the same series, as specified by `global.json`. The target needs `libasound.so.2`, systemd, an `audio` group, and a working ALSA device. A `--self-contained` build does not require a .NET runtime on the target.
+- The target must accept UDP on the selected port, 7355 by default. Allow traffic only from a trusted LAN or VPN. PCM audio is not encrypted.
+- Before changing the host, check that another application has not reserved the sound device. The installer does not open the device or start or restart the service.
 
-## Sestavení
+## Build
 
-V kořeni repozitáře:
+From the repository root:
 
 ```sh
 dotnet publish src/NksAudioLink.Server/NksAudioLink.Server.csproj \
@@ -18,19 +18,19 @@ dotnet publish src/NksAudioLink.Server/NksAudioLink.Server.csproj \
   -p:PublishSingleFile=true -o publish/linux-x64
 ```
 
-Na cílový stroj přeneste `publish/linux-x64/NksAudioLink.Server` a adresář `deploy/linux`. Následující příkazy na cíli spusťte v root shellu (na strojích se `sudo` lze použít `sudo sh ...`). Instalátor nastaví oprávnění cílové binárky:
+Copy `publish/linux-x64/NksAudioLink.Server` and the `deploy/linux` directory to the target. Run the following command there in a root shell. On a machine with `sudo`, you can use `sudo sh ...`. The installer sets permissions on the installed binary.
 
 ```sh
 sh deploy/linux/install.sh ./NksAudioLink.Server
 ```
 
-Instalátor vytvoří neprivilegovaného uživatele `nks-audiolink` ve skupině `audio`, uloží binárku do `/opt/nks-audiolink`, jednotku systemd do `/etc/systemd/system` a při první instalaci vzorovou konfiguraci do `/etc/nks-audiolink/server.json`. Opakované spuštění zachová obsah konfigurace a nastaví její práva na `root:nks-audiolink 0640`; symbolické odkazy odmítne. Binárku vymění atomicky, takže lze soubory aktualizovat i za běhu služby; nová verze začne pracovat po plánovaném restartu. Instalátor zavolá pouze `systemctl daemon-reload`.
+The installer creates the unprivileged `nks-audiolink` user in the `audio` group. It places the binary in `/opt/nks-audiolink`, the systemd unit in `/etc/systemd/system`, and a sample configuration in `/etc/nks-audiolink/server.json` on first installation. Re-running it preserves the configuration and sets its ownership and mode to `root:nks-audiolink 0640`. It rejects symbolic links. Binary replacement is atomic, so files can be updated while the service runs; the new version takes effect after a planned restart. The installer only calls `systemctl daemon-reload`.
 
-## Konfigurace a spuštění
+## Configure and start
 
-Upravte `/etc/nks-audiolink/server.json` před prvním spuštěním. Vzor povoluje jen `127.0.0.0/8`; nastavte `allowCidrs` na skutečný rozsah důvěryhodných klientů. Nepoužívejte bez rozmyslu `0.0.0.0/0`. Pokud chcete ověřování paketů, nastavte stejný `pskBase64` na serveru i klientovi; klíč musí mít alespoň 16 náhodných bajtů. Konfiguraci s klíčem neukládejte do Gitu a ponechte přístup pouze rootovi a skupině služby.
+Edit `/etc/nks-audiolink/server.json` before the first start. The sample allows only `127.0.0.0/8`. Set `allowCidrs` to the range of trusted clients. Do not use `0.0.0.0/0` without considering who can reach the server. To authenticate packets, set the same `pskBase64` on the server and client. The key must contain at least 16 random bytes. Keep configurations containing keys out of Git, and restrict access to root and the service group.
 
-Hodnota `sink` je `alsa:default` nebo například `alsa:plughw:CARD=Device,DEV=0`. Konkrétní ALSA identifikátor zjistíte z `/proc/asound/cards` nebo z výstupu `NksAudioLink.Server devices`. `plughw` dovolí ALSA převést formát, pokud karta přímo nepřijímá stereo S16_LE při 48 kHz. Karta musí být přístupná uživateli ve skupině `audio`. U připojitelné USB karty preferujte stabilní identifikátor ALSA před číslem karty, které se po restartu může změnit.
+Set `sink` to `alsa:default` or, for example, `alsa:plughw:CARD=Device,DEV=0`. Find the ALSA identifier in `/proc/asound/cards` or the output of `NksAudioLink.Server devices`. `plughw` lets ALSA convert the format when a device does not directly accept stereo S16_LE at 48 kHz. The `audio` group must have access to the device. For a removable USB device, prefer a stable ALSA identifier over a card number, which can change after a reboot.
 
 ```sh
 systemctl enable --now nks-audiolink
@@ -38,23 +38,23 @@ systemctl status nks-audiolink
 journalctl -u nks-audiolink -f
 ```
 
-Při aktualizaci spusťte instalátor znovu a službu restartujte v dohodnutém čase:
+For an update, run the installer again and restart the service at an agreed time:
 
 ```sh
 systemctl restart nks-audiolink
 ```
 
-Server otevírá ALSA až při přijetí relace. Paket `BYE` ukončí relaci ihned; zvukovou kartu server uvolní po intervalu `idleReleaseSec` od posledního paketu. Výchozí hodnota je 5 sekund. Pro krátkou izolovanou zkoušku bez zvukové karty lze server spustit ručně s `--sink null` nebo `--sink wav:/tmp/tone.wav`; WAV soubor musí být zapisovatelný uživatelem, pod nímž proces běží.
+The server opens ALSA only when it accepts a session. `BYE` ends the session immediately. The server releases the sound device after `idleReleaseSec` from the last packet; the default is 5 seconds. For a short isolated test without a sound device, run the server manually with `--sink null` or `--sink wav:/tmp/tone.wav`. The process user must be able to write the WAV file.
 
-### Nastavení výkonu
+### CPU settings
 
-Linux publikace nastavuje `System.Threading.ThreadPool.UnfairSemaphoreSpinLimit=0`, aby nečinná vlákna nečekala aktivním otáčením. Jednotka systemd navíc zapíná `DOTNET_SYSTEM_NET_SOCKETS_INLINE_COMPLETIONS=1` a nastavuje `DOTNET_SYSTEM_NET_SOCKETS_THREAD_COUNT=1`. Jeden UDP socket tak zpracovává síťové dokončení v jediném socket vlákně; zvukový výstup dál zapisuje samostatné přehrávací vlákno.
+The Linux build sets `System.Threading.ThreadPool.UnfairSemaphoreSpinLimit=0` to stop idle threads from spinning. The systemd unit also sets `DOTNET_SYSTEM_NET_SOCKETS_INLINE_COMPLETIONS=1` and `DOTNET_SYSTEM_NET_SOCKETS_THREAD_COUNT=1`. Network completions for one UDP socket then run on one socket thread. A separate playback thread still writes audio to the device.
 
-Při izolovaném testu bez zvukové karty na .NET 9.0.20 tato kombinace snížila CPU z 3,87 % na 1,40 % jednoho jádra bez podtečení a pozdních rámců. Při desetiminutovém přenosu do skutečné ALSA s cílovou frontou 30 ms spotřeboval server 1,262 % jednoho jádra a všechny vzorky klientských čítačů chyb zůstaly nulové. Samostatný test s 10 ms přinesl pozdní rámce. Otevírání a zavírání výstupu při `HELLO` může síťové vlákno krátce zdržet. Pro vlastní srovnání lze hodnoty přepsat v doplňkové jednotce systemd a po plánovaném restartu zkontrolovat statistiky. Přímé spuštění binárky mimo systemd tyto dvě proměnné nepřebírá.
+In an isolated test without a sound device on .NET 9.0.20, these settings reduced CPU use from 3.87% to 1.40% of one core, with no underruns or late frames. During a ten-minute stream to physical ALSA with a 30 ms target buffer, the server used 1.262% of one core and every sampled client error counter remained zero. A separate test at 10 ms produced late frames. Opening and closing the output on `HELLO` may briefly hold up the network thread. To compare settings on your host, override them in a systemd drop-in and check the statistics after a planned restart. Running the binary directly does not inherit those two systemd environment variables.
 
-Chování socket nastavení popisuje [implementace .NET 9.0.20](https://github.com/dotnet/runtime/blob/v9.0.20/src/libraries/System.Net.Sockets/src/System/Net/Sockets/SocketAsyncEngine.Unix.cs).
+The [.NET 9.0.20 implementation](https://github.com/dotnet/runtime/blob/v9.0.20/src/libraries/System.Net.Sockets/src/System/Net/Sockets/SocketAsyncEngine.Unix.cs) documents the socket behavior.
 
-## Ověření
+## Verify
 
 ```sh
 /opt/nks-audiolink/NksAudioLink.Server devices
@@ -62,12 +62,12 @@ getent group audio
 id nks-audiolink
 ```
 
-Na Windows odešlete testovací tón pomocí klientského CLI (adresu a případný klíč nastavte pro vlastní síť):
+On Windows, send a test tone with the client CLI. Supply the address and, if needed, the key for your network.
 
 ```powershell
 dotnet run --project src/NksAudioLink.Cli -- test-tone --server SERVER_IP --seconds 10
 ```
 
-Příkazový klient vypisuje zaplnění vyrovnávací fronty, podtečení, přetečení a ztracené pakety. Pro ověření na fyzickém zařízení přepněte zesilovač na vstup, do kterého je zvuková karta zapojena, a poslechněte tón. Dlouhodobý test a měření latence jsou samostatné kroky; samotné úspěšné spuštění služby je neprokazuje. Pokud přibývají pozdní rámce nebo podtečení, nastavte větší cílovou frontu. Hodnota 30 ms poskytuje větší rezervu než ručně zvolených 10 ms.
+The CLI prints buffer occupancy, underruns, overruns, and lost packets. To check the physical output, select the receiver input connected to the sound device and listen for the tone. Starting the service alone does not verify sustained playback or latency. If late frames or underruns increase, raise the target buffer. The default 30 ms provides more margin than a manually selected 10 ms.
 
-Při potížích zkontrolujte `journalctl -u nks-audiolink`, přístup ke `/dev/snd`, správnou hodnotu `sink`, `allowCidrs` a příchozí UDP port. Chyba `ALSA open` často znamená neexistující nebo obsazené zařízení. Služba nepotřebuje PulseAudio, PipeWire ani desktopové sezení.
+For problems, check `journalctl -u nks-audiolink`, access to `/dev/snd`, the `sink` and `allowCidrs` settings, and the incoming UDP port. `ALSA open` often means that the device is absent or busy. The service does not need PulseAudio, PipeWire, or a desktop session.

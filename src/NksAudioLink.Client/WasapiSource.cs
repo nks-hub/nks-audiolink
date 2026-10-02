@@ -32,7 +32,7 @@ public sealed class WasapiSource : IAudioSource
         if (_device.DataFlow != flow)
         {
             _device.Dispose();
-            throw new ArgumentException("Vybrané zařízení nelze použít v\u00A0tomto režimu. Zvolte jiné zařízení.", nameof(deviceId));
+            throw new ArgumentException("The selected device cannot be used in this mode. Choose another device.", nameof(deviceId));
         }
         var builder = new WasapiRecorderBuilder()
             .WithDevice(_device)
@@ -48,14 +48,14 @@ public sealed class WasapiSource : IAudioSource
             string format = _recorder.WaveFormat.ToString();
             _recorder.Dispose();
             _device.Dispose();
-            throw new NotSupportedException($"Zvukové zařízení neposkytuje požadovaný formát 48\u00A0kHz, 16\u00A0bitů, stereo ({format}). Zvolte jiné zařízení.");
+            throw new NotSupportedException($"The audio device does not provide 48 kHz, 16-bit stereo ({format}). Choose another device.");
         }
         _recorder.DataAvailable += (buffer, _, _, _) => Queue.Write(buffer);
         _recorder.RecordingStopped += (_, stopped) =>
         {
             if (_stopping) return;
             Queue.Clear();
-            CaptureError?.Invoke(stopped.Exception ?? new IOException("Zachytávání zvuku se přerušilo. Zkontrolujte zvukové zařízení."));
+            CaptureError?.Invoke(stopped.Exception ?? new IOException("Audio capture stopped. Check the audio device."));
         };
     }
 

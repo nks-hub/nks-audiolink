@@ -1,13 +1,13 @@
-# Licence použitých součástí
+# Third-party notices
 
-Vydávané binární soubory obsahují .NET runtime 9.0.20. Linuxový server používá Microsoft.NETCore.App, aplikace a příkazový klient pro Windows také Microsoft.WindowsDesktop.App. Licence a oznámení o použitých součástech jsou v adresáři `licenses/` každého balíčku. Soubory pro CoreApp pocházejí z příslušných balíčků runtime 9.0.20. Licence WindowsDesktop pochází z balíčku runtime 9.0.20, jeho oznámení z odpovídajícího .NET SDK 9.0.318; balíček runtime je neobsahuje. Tyto licence se vztahují na přibalený runtime, ne na NKS AudioLink.
+The self-contained binaries include .NET runtime 9.0.20. The Linux server uses Microsoft.NETCore.App; the Windows app and CLI also use Microsoft.WindowsDesktop.App. Each package includes their license and third-party notice files under `licenses/`. CoreApp files come from the matching 9.0.20 runtime packages. The WindowsDesktop license comes from its 9.0.20 runtime package; its third-party notices come from the matching .NET SDK 9.0.318 because the runtime package does not include that file. These licenses cover the bundled runtime.
 
-NKS AudioLink používá NAudio 3.1.0 a jeho součásti pod licencí MIT. Ta se vztahuje na NAudio, ne na NKS AudioLink.
+AudioLink uses NAudio 3.1.0 and its components under the MIT license reproduced below. AudioLink's own license status is described in [README.md](README.md#license).
 
-Zdroj NAudio: https://github.com/naudio/NAudio
-Zdroj licence: https://raw.githubusercontent.com/naudio/NAudio/main/LICENSE
+NAudio source: [naudio/NAudio](https://github.com/naudio/NAudio).
+License source: [upstream LICENSE](https://raw.githubusercontent.com/naudio/NAudio/main/LICENSE).
 
-## Původní znění licence NAudio
+## Original NAudio license
 
 Copyright 2008-2026 Mark Heath
 

@@ -25,14 +25,14 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
     private double _captureLatencyMs = 10;
     public double CaptureLatencyMs => Volatile.Read(ref _captureLatencyMs);
 
-    private sealed class CaptureDeviceException(Exception inner) : Exception("Zvukové zařízení přestalo dodávat data. Zkontrolujte jeho připojení.", inner);
+    private sealed class CaptureDeviceException(Exception inner) : Exception("The audio device stopped providing data. Check its connection.", inner);
 
     public async Task RunAsync(string? deviceId, bool loopback, CancellationToken cancellationToken, bool takeover = false)
     {
         bool recoveringCapture = false;
         while (!cancellationToken.IsCancellationRequested)
         {
-            string retryState = "Obnovuje zvukové zařízení";
+            string retryState = "Recovering audio device";
             try
             {
                 await RunSessionAsync(deviceId, loopback, cancellationToken, takeover);
@@ -49,7 +49,7 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
             }
             catch (SocketException error) when (IsTransient(error) || error.SocketErrorCode is SocketError.HostNotFound or SocketError.NoData)
             {
-                retryState = "Čeká na server";
+                retryState = "Waiting for server";
             }
             takeover = false;
             StateChanged?.Invoke(retryState);
@@ -112,7 +112,7 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
 
         void ConnectionInterrupted()
         {
-            if (Interlocked.Exchange(ref accepted, 0) == 1) StateChanged?.Invoke("Čeká na server");
+            if (Interlocked.Exchange(ref accepted, 0) == 1) StateChanged?.Invoke("Waiting for server");
         }
 
         using var receiveStop = CancellationTokenSource.CreateLinkedTokenSource(runToken);
@@ -140,7 +140,7 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
                         if (next == 1) Interlocked.Exchange(ref takeoverPending, 0);
                         Volatile.Write(ref lastStatsTick, Stopwatch.GetTimestamp());
                         StatsReceived?.Invoke(stats, lastRttMs);
-                        if (previous != next) StateChanged?.Invoke(stats.Accepted ? "Připojeno" : "Odmítnuto");
+                        if (previous != next) StateChanged?.Invoke(stats.Accepted ? "Connected" : "Rejected");
                     }
                     else if (header.Type == PacketType.Pong && responseBody.Length == 8)
                     {
@@ -155,7 +155,7 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
                         Interlocked.CompareExchange(ref rejectionFailure,
                             new ServerRejectedException((RejectReason)responseBody[0]), null);
                         runStop.Cancel();
-                        StateChanged?.Invoke("Odmítnuto");
+                        StateChanged?.Invoke("Rejected");
                     }
                 }
             }
@@ -168,7 +168,7 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
             await SendHelloAsync();
             source.Start();
             Volatile.Write(ref _captureLatencyMs, source.CaptureLatencyMs);
-            StateChanged?.Invoke("Připojování");
+            StateChanged?.Invoke("Connecting");
             var senderDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var sender = new Thread(() =>
             {
@@ -204,7 +204,7 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
                         long last = Volatile.Read(ref lastStatsTick);
                         if (last == 0 || (Stopwatch.GetTimestamp() - last) * 1000.0 / Stopwatch.Frequency > 3000)
                         {
-                            if (Interlocked.Exchange(ref accepted, 0) == 1) StateChanged?.Invoke("Čeká na server");
+                            if (Interlocked.Exchange(ref accepted, 0) == 1) StateChanged?.Invoke("Waiting for server");
                         }
                         if (Volatile.Read(ref accepted) == 1)
                         {
@@ -258,7 +258,7 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
                 finally
                 {
                     try { await SendAsync(PacketType.Bye, PacketFlags.None, 0); } catch (SocketException) { }
-                    StateChanged?.Invoke("Odpojeno");
+                    StateChanged?.Invoke("Disconnected");
                 }
             }
         }

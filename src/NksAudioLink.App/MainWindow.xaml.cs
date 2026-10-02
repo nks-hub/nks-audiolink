@@ -45,7 +45,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         try { VirtualCableRouting.RestorePending(); }
-        catch (Exception ex) { DetailText.Text = "Původní zvukové zařízení se nepodařilo obnovit. Zkontrolujte výchozí výstup Windows. " + ex.Message; }
+        catch (Exception ex) { DetailText.Text = "Could not restore the previous sound device. Check the Windows default output. " + ex.Message; }
         LoadSettings();
         RefreshDevices();
         InitTray();
@@ -54,14 +54,14 @@ public partial class MainWindow : Window
             using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");
             StartWithWindowsCheck.IsChecked = key?.GetValue(StartupName) is not null;
         }
-        catch (Exception ex) { DetailText.Text = "Nastavení spouštění s\u00A0Windows nelze přečíst. " + ex.Message; }
+        catch (Exception ex) { DetailText.Text = "Could not read the Windows startup setting. " + ex.Message; }
         _initializing = false;
         _healthTimer.Tick += (_, _) =>
         {
             if (_streamStop is not null && !_streamStop.IsCancellationRequested &&
                 DateTime.UtcNow - (_lastStatsUtc == DateTime.MinValue ? _connectionStartedUtc : _lastStatsUtc) > TimeSpan.FromSeconds(4) &&
-                (StatusText.Text == "Připojeno" || StatusText.Text == "Připojování"))
-                SetStatus("Čeká na server", "Server neodpovídá. Aplikace zkouší spojení obnovit.");
+                (StatusText.Text == "Connected" || StatusText.Text == "Connecting"))
+                SetStatus("Waiting for server", "The server is not responding. The app is trying to reconnect.");
         };
         _healthTimer.Start();
     }
@@ -82,7 +82,7 @@ public partial class MainWindow : Window
             LoopbackRadio.IsChecked = saved.Loopback && !saved.VirtualCableMode;
             _preferredDeviceId = saved.DeviceId;
         }
-        catch (Exception ex) { DetailText.Text = "Uložené nastavení nelze načíst. Zkontrolujte soubor settings.json. " + ex.Message; }
+        catch (Exception ex) { DetailText.Text = "Could not load saved settings. Check settings.json. " + ex.Message; }
     }
 
     private void SaveSettings()
@@ -102,7 +102,7 @@ public partial class MainWindow : Window
             Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
             File.WriteAllText(SettingsPath, JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true }));
         }
-        catch (Exception ex) { DetailText.Text = "Nastavení nelze uložit. Zkontrolujte přístup k\u00A0uživatelské složce. " + ex.Message; }
+        catch (Exception ex) { DetailText.Text = "Could not save settings. Check access to your user folder. " + ex.Message; }
     }
 
     private void RefreshDevices()
@@ -122,13 +122,13 @@ public partial class MainWindow : Window
             CableInfoButton.Visibility = virtualMode && cable is null ? Visibility.Visible : Visibility.Collapsed;
             _preferredDeviceId = null;
             DeviceHint.Text = virtualMode && cable is null
-                ? "VB-CABLE není připraven. Zapněte zařízení CABLE Input i\u00A0CABLE Output ve Windows."
-                : virtualMode ? "Při připojení se výchozí výstup Windows přepne na CABLE Input. Po odpojení se obnoví."
-                : devices.Length == 0 ? "Není dostupné žádné zvukové zařízení. Zkontrolujte nastavení zvuku ve Windows." : "";
+                ? "VB-CABLE is not ready. Enable CABLE Input and CABLE Output in Windows."
+                : virtualMode ? "Connecting sets CABLE Input as the Windows default output. Disconnecting restores the previous device."
+                : devices.Length == 0 ? "No audio device is available. Check Windows sound settings." : "";
         }
         catch (Exception ex)
         {
-            DeviceHint.Text = "Zvuková zařízení nelze načíst. Zkuste je obnovit. " + ex.Message;
+            DeviceHint.Text = "Could not list audio devices. Try Refresh. " + ex.Message;
             DeviceCombo.ItemsSource = null;
         }
     }
@@ -137,10 +137,10 @@ public partial class MainWindow : Window
     {
         if (DeviceCombo is null || ModeDescription is null) return;
         ModeDescription.Text = LoopbackRadio.IsChecked == true
-            ? "Odesílá zvuk vybraného výstupu. Současně hraje i\u00A0na tomto počítači."
+            ? "Sends audio from the selected output. It still plays on this PC."
             : VirtualRadio.IsChecked == true
-                ? "Směruje zvuk Windows do CABLE Input a\u00A0zachytává jej z\u00A0CABLE Output."
-                : "Odesílá zvuk vybraného vstupu. Výchozí výstup Windows zůstane stejný.";
+                ? "Routes Windows audio to CABLE Input and captures it from CABLE Output."
+                : "Sends audio from the selected input. The Windows default output stays the same.";
         RefreshDevices();
     }
 
@@ -148,16 +148,16 @@ public partial class MainWindow : Window
     private void CableInfo_Click(object sender, RoutedEventArgs e)
     {
         try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("https://vb-audio.com/Cable/") { UseShellExecute = true }); }
-        catch (Exception ex) { SetStatus("Web nelze otevřít", "Otevřete stránku výrobce v\u00A0prohlížeči. " + ex.Message); }
+        catch (Exception ex) { SetStatus("Could not open website", "Open the vendor website in a browser. " + ex.Message); }
     }
     private void GainSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
-        if (GainValue is not null) GainValue.Text = $"{(int)GainSlider.Value}\u00A0%";
+        if (GainValue is not null) GainValue.Text = $"{(int)GainSlider.Value}%";
         if (_activeClient is not null) _activeClient.Gain = GainSlider.Value / 100;
     }
     private void LatencySlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
-        if (LatencyValue is not null) LatencyValue.Text = $"{(int)LatencySlider.Value}\u00A0ms";
+        if (LatencyValue is not null) LatencyValue.Text = $"{(int)LatencySlider.Value} ms";
     }
 
     private async void Connect_Click(object sender, RoutedEventArgs e)
@@ -166,20 +166,20 @@ public partial class MainWindow : Window
         bool virtualMode = VirtualRadio.IsChecked == true;
         (AudioDevice Playback, AudioDevice Capture)? cablePair;
         try { cablePair = virtualMode ? VirtualCableRouting.FindInstalledPair() : null; }
-        catch (Exception ex) { SetStatus("Zvukové zařízení nelze načíst", ex.Message); return; }
+        catch (Exception ex) { SetStatus("Could not list devices", ex.Message); return; }
         if (virtualMode && cablePair is null)
         {
-            SetStatus("Virtuální režim není připraven", "Zapněte CABLE Input a\u00A0CABLE Output v\u00A0nastavení zvuku Windows.");
+            SetStatus("Virtual mode unavailable", "Enable CABLE Input and CABLE Output in Windows sound settings.");
             return;
         }
         if (DeviceCombo.SelectedItem is not AudioDevice device)
         {
-            SetStatus("Chybí zdroj", "Vyberte dostupné zvukové zařízení.");
+            SetStatus("No audio source", "Select an available audio device.");
             return;
         }
         if (!int.TryParse(PortBox.Text, out int port))
         {
-            SetStatus("Chyba nastavení", "UDP port musí být číslo od 1 do 65 535.");
+            SetStatus("Invalid settings", "Enter a UDP port from 1 to 65535.");
             return;
         }
         var config = new ClientConfig
@@ -189,26 +189,26 @@ public partial class MainWindow : Window
             PskBase64 = string.IsNullOrWhiteSpace(PskBox.Password) ? null : PskBox.Password.Trim()
         };
         try { config.Validate(); }
-        catch (Exception ex) { SetStatus("Chyba nastavení", ex.Message); return; }
+        catch (Exception ex) { SetStatus("Invalid settings", ex.Message); return; }
         if (virtualMode)
         {
             try
             {
                 var cable = cablePair!.Value;
                 if (device.Id != cable.Capture.Id)
-                    throw new InvalidOperationException("Vybraný vstup není CABLE Output.");
+                    throw new InvalidOperationException("The selected input is not CABLE Output. Refresh the device list.");
                 VirtualCableRouting.Activate(cable.Playback.Id);
             }
-            catch (Exception ex) { SetStatus("Virtuální režim není připraven", ex.Message); return; }
+            catch (Exception ex) { SetStatus("Virtual mode unavailable", ex.Message); return; }
         }
         SaveSettings();
         _streamStop = new CancellationTokenSource();
         _lastStatsUtc = DateTime.MinValue;
         _connectionStartedUtc = DateTime.UtcNow;
-        ConnectButton.Content = "Odpojit";
+        ConnectButton.Content = "Disconnect";
         ConnectButton.Background = System.Windows.Media.Brushes.IndianRed;
-        if (_trayConnect is not null) _trayConnect.Text = "Odpojit";
-        SetStatus("Připojování", $"Server {config.Server}:{config.Port} · {device.Name}");
+        if (_trayConnect is not null) _trayConnect.Text = "Disconnect";
+        SetStatus("Connecting", $"Server {config.Server}:{config.Port} · {device.Name}");
         var client = new AudioStreamClient(config);
         _activeClient = client;
         ServerCard.IsEnabled = SourceCard.IsEnabled = LatencySlider.IsEnabled = false;
@@ -220,13 +220,13 @@ public partial class MainWindow : Window
         client.StateChanged += state => Dispatcher.BeginInvoke(() =>
         {
             if (!ReferenceEquals(_activeClient, client) || _streamStop is null || _streamStop.IsCancellationRequested) return;
-            if (state == "Odpojeno") return;
-            if (state.StartsWith("Odm", StringComparison.OrdinalIgnoreCase))
-                SetStatus("Odmítnuto", state);
-            else if (state == "Obnovuje zvukové zařízení")
-                SetStatus(state, "Vybrané zařízení není dostupné. Zkontrolujte jeho připojení.");
-            else if (state == "Čeká na server")
-                SetStatus(state, "Server neodpovídá. Aplikace zkouší spojení obnovit.");
+            if (state == "Disconnected") return;
+            if (state == "Rejected")
+                SetStatus("Rejected", state);
+            else if (state == "Recovering audio device")
+                SetStatus(state, "The selected device is unavailable. Check its connection.");
+            else if (state == "Waiting for server")
+                SetStatus(state, "The server is not responding. The app is trying to reconnect.");
         });
         _streamTask = client.RunAsync(device.Id, LoopbackRadio.IsChecked == true, _streamStop.Token);
         bool serverRejected = false;
@@ -234,44 +234,44 @@ public partial class MainWindow : Window
         catch (ServerRejectedException ex)
         {
             serverRejected = true;
-            SetStatus("Odmítnuto", ex.Message);
+            SetStatus("Rejected", ex.Message);
         }
-        catch (Exception ex) { if (!_closing) SetStatus("Chyba přenosu", ex.Message); }
+        catch (Exception ex) { if (!_closing) SetStatus("Stream error", ex.Message); }
         finally
         {
             if (virtualMode)
             {
                 try { VirtualCableRouting.RestorePending(); }
-                catch (Exception ex) { SetStatus("Obnova zvukovky selhala", ex.Message); }
+                catch (Exception ex) { SetStatus("Device restore failed", ex.Message); }
             }
             _streamStop.Dispose();
             _streamStop = null;
             _streamTask = null;
             _activeClient = null;
             ServerCard.IsEnabled = SourceCard.IsEnabled = LatencySlider.IsEnabled = true;
-            ConnectButton.Content = "Připojit";
+            ConnectButton.Content = "Connect";
             ConnectButton.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(21, 127, 117));
-            if (!serverRejected && StatusText.Text is not ("Chyba přenosu" or "Obnova zvukovky selhala"))
-                SetStatus("Odpojeno", "Přenos je zastavený.");
-            if (_trayConnect is not null) _trayConnect.Text = "Připojit";
+            if (!serverRejected && StatusText.Text is not ("Stream error" or "Device restore failed"))
+                SetStatus("Disconnected", "Streaming has stopped.");
+            if (_trayConnect is not null) _trayConnect.Text = "Connect";
         }
     }
 
     private void ShowStats(StatsMessage stats, double rtt, double captureLatencyMs)
     {
         _lastStatsUtc = DateTime.UtcNow;
-        SetStatus(stats.Accepted ? "Připojeno" : "Odmítnuto",
-            stats.Accepted ? "Zvuk se odesílá: 48\u00A0kHz, 16\u00A0bitů, stereo." : "Server připojení odmítl. Zkontrolujte adresu, sdílený klíč a\u00A0to, zda server používá jiný klient.");
-        BufferText.Text = $"{stats.BufferMs}\u00A0ms";
-        SinkDelayText.Text = $"{stats.SinkDelayMs}\u00A0ms";
-        RttText.Text = $"{rtt:0.0}\u00A0ms";
+        SetStatus(stats.Accepted ? "Connected" : "Rejected",
+            stats.Accepted ? "Sending audio: 48 kHz, 16-bit stereo." : "The server rejected this connection. Check its address, shared key, and whether another client is connected.");
+        BufferText.Text = $"{stats.BufferMs} ms";
+        SinkDelayText.Text = $"{stats.SinkDelayMs} ms";
+        RttText.Text = $"{rtt:0.0} ms";
         // Capture period is an estimate; WASAPI does not report actual capture-to-wire delay here.
-        EndToEndText.Text = $"≈\u00A0{captureLatencyMs + AudioFrameQueue.TargetBufferMs + Protocol.FrameMs + rtt / 2 + stats.BufferMs + stats.SinkDelayMs:0}\u00A0ms";
+        EndToEndText.Text = $"≈ {captureLatencyMs + AudioFrameQueue.TargetBufferMs + Protocol.FrameMs + rtt / 2 + stats.BufferMs + stats.SinkDelayMs:0} ms";
         LostText.Text = stats.Lost.ToString("N0");
         LateText.Text = stats.Late.ToString("N0");
         UnderrunText.Text = stats.Underruns.ToString("N0");
         OverrunText.Text = stats.Overruns.ToString("N0");
-        if (_trayConnect is not null) _trayConnect.Text = "Odpojit";
+        if (_trayConnect is not null) _trayConnect.Text = "Disconnect";
     }
 
     private void SetStatus(string status, string detail)
@@ -285,14 +285,14 @@ public partial class MainWindow : Window
     {
         if (!int.TryParse(PortBox.Text, out int port) || port is < 1 or > 65535)
         {
-            DiscoveryText.Text = "Zadejte platný UDP port.";
+            DiscoveryText.Text = "Enter a valid UDP port.";
             return;
         }
         byte[] key;
         try { key = string.IsNullOrWhiteSpace(PskBox.Password) ? [] : Convert.FromBase64String(PskBox.Password.Trim()); }
-        catch (FormatException) { DiscoveryText.Text = "Sdílený klíč musí být ve formátu Base64. Zkontrolujte zadaný text."; return; }
+        catch (FormatException) { DiscoveryText.Text = "The shared key must be Base64. Check the entered value."; return; }
         DiscoverButton.IsEnabled = false;
-        DiscoveryText.Text = "Hledám server v\u00A0místní síti…";
+        DiscoveryText.Text = "Searching the local network…";
         try
         {
             byte[] request = new byte[Protocol.MaxDatagramSize];
@@ -315,13 +315,13 @@ public partial class MainWindow : Window
             {
                 timeout.Cancel();
                 ServerBox.Text = found.Address.ToString();
-                DiscoveryText.Text = $"Nalezeno: {found.Message.Name} ({ServerBox.Text}, výstup {found.Message.Sink})";
+                DiscoveryText.Text = $"Found: {found.Message.Name} ({ServerBox.Text}, output {found.Message.Sink})";
                 SaveSettings();
             }
-            else DiscoveryText.Text = "Server neodpověděl. Zadejte adresu ručně nebo zkontrolujte síť a\u00A0sdílený klíč.";
+            else DiscoveryText.Text = "No server replied. Enter its address or check the network and shared key.";
         }
-        catch (OperationCanceledException) { DiscoveryText.Text = "Server neodpověděl. Zadejte adresu ručně nebo zkontrolujte síť a\u00A0sdílený klíč."; }
-        catch (Exception ex) { DiscoveryText.Text = "Server nelze vyhledat. Zkontrolujte připojení k\u00A0síti. " + ex.Message; }
+        catch (OperationCanceledException) { DiscoveryText.Text = "No server replied. Enter its address or check the network and shared key."; }
+        catch (Exception ex) { DiscoveryText.Text = "Could not search for a server. Check the network connection. " + ex.Message; }
         finally { DiscoverButton.IsEnabled = true; }
     }
 
@@ -381,14 +381,14 @@ public partial class MainWindow : Window
     private void InitTray()
     {
         var menu = new Forms.ContextMenuStrip();
-        var open = new Forms.ToolStripMenuItem("Otevřít");
+        var open = new Forms.ToolStripMenuItem("Open");
         open.Click += (_, _) => Dispatcher.BeginInvoke(() => { Show(); WindowState = WindowState.Normal; Activate(); });
-        _trayConnect = new Forms.ToolStripMenuItem("Připojit");
+        _trayConnect = new Forms.ToolStripMenuItem("Connect");
         _trayConnect.Click += (_, _) => Dispatcher.BeginInvoke(() => Connect_Click(this, new RoutedEventArgs()));
-        var quit = new Forms.ToolStripMenuItem("Ukončit");
+        var quit = new Forms.ToolStripMenuItem("Quit");
         quit.Click += (_, _) => Dispatcher.BeginInvoke(() => { _closing = true; Close(); });
         menu.Items.AddRange([open, _trayConnect, new Forms.ToolStripSeparator(), quit]);
-        _tray = new Forms.NotifyIcon { Icon = System.Drawing.SystemIcons.Application, Text = "NKS AudioLink: Odpojeno", ContextMenuStrip = menu, Visible = true };
+        _tray = new Forms.NotifyIcon { Icon = System.Drawing.SystemIcons.Application, Text = "NKS AudioLink: Disconnected", ContextMenuStrip = menu, Visible = true };
         _tray.DoubleClick += (_, _) => Dispatcher.BeginInvoke(() => { Show(); WindowState = WindowState.Normal; Activate(); });
     }
 
@@ -402,7 +402,7 @@ public partial class MainWindow : Window
                 key.SetValue(StartupName, "\"" + Environment.ProcessPath + "\"");
             else key.DeleteValue(StartupName, false);
         }
-        catch (Exception ex) { DetailText.Text = "Spouštění s\u00A0Windows nelze změnit. Zkontrolujte oprávnění účtu. " + ex.Message; }
+        catch (Exception ex) { DetailText.Text = "Could not change the Windows startup setting. Check your account permissions. " + ex.Message; }
     }
 
     private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
@@ -422,7 +422,7 @@ public partial class MainWindow : Window
             e.Cancel = true;
             _closing = false;
             Show();
-            SetStatus("Obnova zvukovky selhala", ex.Message);
+            SetStatus("Device restore failed", ex.Message);
             return;
         }
         _healthTimer.Stop();

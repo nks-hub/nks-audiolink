@@ -1,49 +1,49 @@
-# Windows klient
+# Windows client
 
-Grafická aplikace používá Windows 10 nebo novější. Vydání pro `win-x64` obsahuje .NET runtime; pro sestavení ze zdrojů je potřeba .NET SDK 9.0.318 nebo novější oprava téže řady podle `global.json`:
+The desktop application requires Windows 10 or later. The `win-x64` release includes the .NET runtime. Building from source requires .NET SDK 9.0.318 or a later patch in the same series, as specified by `global.json`:
 
 ```powershell
 dotnet run --project src/NksAudioLink.App
 ```
 
-V aplikaci zadejte adresu serveru nebo použijte **Najít**, vyberte zdroj, nastavte **Zesílení** a **Rezervu zvuku** a stiskněte **Připojit**. Rezerva zvuku určuje velikost vyrovnávací fronty na serveru. Zesílení lze měnit během přenosu. Ostatní nastavení se mění po odpojení. Panel stavu ukazuje odhad latence, zaplnění fronty serveru, zpoždění výstupu, dobu síťové odezvy a počty ztrát, pozdních rámců, podtečení a přetečení.
+Enter the server address or click **Find**, choose an audio source, set **Gain** and **Target buffer**, then click **Connect**. The target buffer controls the server jitter buffer size. Gain can be changed while streaming; disconnect before changing the other settings. The status panel shows estimated delay, server buffer occupancy, output queue delay, network round-trip time, and counts of lost and late frames, underruns, and overruns.
 
-Zavření okna aplikaci ponechá v oznamovací oblasti. Nabídka ikony umožňuje připojení, odpojení, otevření okna a úplné ukončení. Volba **Spouštět s Windows** přidá záznam pouze pro aktuálního uživatele. Nastavení se ukládá do `%AppData%\NksAudioLink\settings.json`; sdílený klíč se do tohoto souboru neukládá.
+Closing the window leaves the application in the notification area. Its icon menu lets you connect, disconnect, reopen the window, or quit. **Start with Windows** creates a startup entry only for the current user. Settings are stored in `%AppData%\NksAudioLink\settings.json`; the shared key is not saved there.
 
-## Režimy
+## Audio modes
 
-- **Celý zvuk PC:** WASAPI loopback vybraného výstupního zařízení. Zvuk je současně dostupný i na místním výstupu.
-- **Virtuální zvukovka:** zachytává CABLE Output a po dobu spojení nastaví výchozí výstup Windows na CABLE Input. Vyžaduje samostatně nainstalovaný VB-CABLE.
-- **Jiný vstup:** zachytává vybrané záznamové zařízení. Výchozí výstup Windows se nemění.
+- **All PC audio:** WASAPI loopback from the selected playback device. Audio remains available on the local output.
+- **Virtual audio device:** captures CABLE Output and sets the Windows default playback device to CABLE Input while connected. Requires a separately installed VB-CABLE driver.
+- **Other input:** captures the selected recording device without changing the Windows default playback device.
 
-Windows aplikace mohou mít vlastní pevně zvolený výstup. Pro virtuální režim v nich vyberte systémový výchozí výstup nebo CABLE Input.
+Some Windows applications use a fixed playback device. To route them through the virtual mode, select the system default or CABLE Input in those applications.
 
-## Když zvuk hraje potichu
+## If playback is quiet
 
-Zkontrolujte hlasitost přehrávače, hlasitost dané aplikace ve směšovači Windows a hlasitost výstupního zařízení. V režimu virtuální zvukovky je výstupem **CABLE Input** a zachytávacím zařízením **CABLE Output**. Obě zařízení mohou mít vlastní úroveň i vypnutí zvuku. Volba **Zesílení 100 %** v AudioLinku ponechává úroveň beze změny; vyšší hodnota může u hlasitého signálu způsobit zkreslení.
+Check the player volume, the application's level in the Windows volume mixer, and the playback device level. In virtual mode, **CABLE Input** is the playback device and **CABLE Output** is the capture device. Each can have its own level and mute setting. **Gain 100%** in AudioLink preserves the input level. Higher gain can distort a loud signal.
 
-Na Linuxu může zvuk tlumit také hardwarový směšovač zvukové karty. Pokud máte nainstalovaný nástroj `amixer`, číslo karty zjistíte z `/proc/asound/cards` a její nastavení přečtete tímto příkazem:
+The Linux sound device's hardware mixer can also lower the level. If `amixer` is installed, find the card number in `/proc/asound/cards` and read its control:
 
 ```sh
 amixer -c 1 sget Speaker
 ```
 
-Příkaz pouze čte nastavení. Číslo `1` nahraďte číslem své karty a `Speaker` názvem jejího ovládacího prvku. Pokud přehrává jiná aplikace, než čekáte, zkontrolujte také její vybrané výstupní zařízení. Při pozdních rámcích nebo podtečení zvyšte **Rezervu zvuku**; ručně nastavených 10 ms nechává na kolísání sítě menší rezervu než 30 ms.
+This command only reads the setting. Replace `1` with your card number and `Speaker` with its control name. If audio from the wrong application is playing, check that application's selected playback device. If late frames or underruns increase, raise **Target buffer**. A manually selected 10 ms leaves less margin for network variation than 30 ms.
 
-## Příprava VB-CABLE
+## Set up VB-CABLE
 
-VB-CABLE je samostatný ovladač výrobce VB-Audio. Z jeho [oficiální stránky](https://vb-audio.com/Cable/) stáhněte Pack45, rozbalte celý archiv a spusťte `VBCABLE_Setup_x64.exe` jako správce. Před spuštěním lze ověřit podpis:
+VB-CABLE is a separate driver from VB-Audio. Download Pack45 from its [official site](https://vb-audio.com/Cable/), extract the entire archive, and run `VBCABLE_Setup_x64.exe` as administrator. You can check its signature first:
 
 ```powershell
 Get-AuthenticodeSignature .\VBCABLE_Setup_x64.exe |
     Format-List Status, SignerCertificate
 ```
 
-Podpis má být platný a podepisovatel BUREL VINCENT. Potvrďte instalaci v samostatném instalátoru a dokončete ji restartem PC podle návodu výrobce. Potom v AudioLink použijte **Obnovit**; musí se objevit aktivní CABLE Input a CABLE Output.
+The signature should be valid and the signer should be BUREL VINCENT. Confirm installation in the separate installer and restart the PC if the vendor's instructions require it. Then click **Refresh** in AudioLink. Both CABLE Input and CABLE Output must be active.
 
-Ovladač není součástí vydání AudioLink. Jeho přiložená licence vyžaduje souhlas autora pro integraci do instalačního procesu jiného programu, proto aplikace nabízí odkaz na výrobce a detekci již nainstalovaného zařízení. Podmínky a donationware model popisuje [VB-Audio](https://vb-audio.com/Services/licensing.htm).
+The driver is not included in the AudioLink release. Its bundled license requires the author's consent before integration into another program's installer. AudioLink therefore links to the vendor and detects an existing installation. [VB-Audio](https://vb-audio.com/Services/licensing.htm) describes the terms and donationware model.
 
-Před změnou výchozího zařízení AudioLink uloží původní výstupy všech tří rolí Windows. Při odpojení a ukončení je obnoví. Po násilném ukončení provede obnovu při dalším spuštění. Ručně změněný výstup během přenosu nepřepisuje. Pokud obnova selže kvůli nedostupnému původnímu zařízení, aplikace zobrazí chybu a zachová zálohu v `%AppData%\NksAudioLink\default-playback-backup.json`.
+Before changing the default playback device, AudioLink records the previous device for all three Windows roles. It restores them on disconnect and exit, or at the next launch after a forced exit. It does not overwrite a manual device change made while streaming. If restoration fails because the previous device is unavailable, the application reports an error and keeps the backup at `%AppData%\NksAudioLink\default-playback-backup.json`.
 
 ## CLI
 
@@ -54,4 +54,4 @@ dotnet run --project src/NksAudioLink.Cli -- send --server SERVER_IP --seconds 1
 dotnet run --project src/NksAudioLink.Cli -- test-tone --server SERVER_IP --seconds 10 --gain 0.01
 ```
 
-`send` podporuje `--mode loopback|capture`, `--device ID`, `--latency MS`, `--port`, `--config FILE` a `--takeover true` pro vědomé převzetí obsazeného serveru. Bez `--seconds` běží do Ctrl+C. Parametr `--gain` nastavuje zesílení v rozsahu 0 až 4 a používá desetinnou tečku. Příkazový klient při zachytávání ze vstupu sám nepřepíná výchozí zvukovku; automatické směrování zajišťuje grafická aplikace.
+`send` supports `--mode loopback|capture`, `--device ID`, `--latency MS`, `--port`, `--config FILE`, and `--takeover true` to deliberately take over a busy server. Without `--seconds`, it runs until Ctrl+C. `--gain` accepts a value from 0 to 4 and uses a decimal point. The CLI does not change the default playback device when it captures an input; the desktop application handles automatic routing.

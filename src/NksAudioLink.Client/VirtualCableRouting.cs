@@ -36,7 +36,7 @@ public static class VirtualCableRouting
         using var cable = enumerator.GetDevice(cablePlaybackId);
         if (cable.DataFlow != DataFlow.Render || cable.State != DeviceState.Active ||
             !cable.FriendlyName.Contains("CABLE Input", StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("CABLE Input není aktivní výstup. Zapněte jej v\u00A0nastavení zvuku Windows.");
+            throw new InvalidOperationException("CABLE Input is not an active playback device. Enable it in Windows sound settings.");
 
         var previous = new Dictionary<Role, string>();
         foreach (var role in Roles)
@@ -67,7 +67,7 @@ public static class VirtualCableRouting
         if (!File.Exists(JournalPath)) return;
         RouteJournal? journal = JsonSerializer.Deserialize<RouteJournal>(File.ReadAllText(JournalPath));
         if (journal is null || string.IsNullOrEmpty(journal.CablePlaybackId) || journal.Previous is null)
-            throw new InvalidDataException("Zálohu výchozího zvukového zařízení nelze přečíst. Zkontrolujte soubor default-playback-backup.json.");
+            throw new InvalidDataException("Could not read the default playback device backup. Check default-playback-backup.json.");
 
         using var enumerator = new MMDeviceEnumerator();
         using var policy = new PolicyConfig();
@@ -81,9 +81,9 @@ public static class VirtualCableRouting
                 if (current.ID == journal.CablePlaybackId && originalId != journal.CablePlaybackId)
                     policy.SetDefaultEndpoint(originalId, role);
             }
-            catch (Exception ex) { errors.Add(new InvalidOperationException($"Výchozí výstup pro {role} nelze obnovit. Zkontrolujte nastavení zvuku Windows.", ex)); }
+            catch (Exception ex) { errors.Add(new InvalidOperationException($"Could not restore the default output for {role}. Check Windows sound settings.", ex)); }
         }
-        if (errors.Count > 0) throw new AggregateException("Původní výchozí výstup nelze úplně obnovit. Zkontrolujte nastavení zvuku Windows.", errors);
+        if (errors.Count > 0) throw new AggregateException("Could not fully restore the previous default output. Check Windows sound settings.", errors);
         File.Delete(JournalPath);
     }
 
@@ -122,9 +122,9 @@ public static class VirtualCableRouting
         public PolicyConfig()
         {
             var type = Type.GetTypeFromCLSID(new Guid("870AF99C-171D-4F9E-AF0D-E63DF40C2BC9"))
-                ?? throw new InvalidOperationException("Windows nedovoluje změnit výchozí zvukový výstup. Zkontrolujte nastavení zvuku.");
+                ?? throw new InvalidOperationException("Windows could not change the default audio output. Check sound settings.");
             _native = (IPolicyConfig)(Activator.CreateInstance(type)
-                ?? throw new InvalidOperationException("Windows nedovoluje změnit výchozí zvukový výstup. Zkontrolujte nastavení zvuku."));
+                ?? throw new InvalidOperationException("Windows could not change the default audio output. Check sound settings."));
         }
 
         public void SetDefaultEndpoint(string deviceId, Role role)

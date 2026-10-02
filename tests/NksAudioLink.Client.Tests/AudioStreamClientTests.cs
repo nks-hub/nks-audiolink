@@ -91,7 +91,7 @@ public sealed class AudioStreamClientTests
         int waitingStates = 0;
         client.StateChanged += state =>
         {
-            if (state == "Čeká na server") Interlocked.Increment(ref waitingStates);
+            if (state == "Waiting for server") Interlocked.Increment(ref waitingStates);
         };
         using var stop = new CancellationTokenSource();
         Task running = client.RunAsync(null, true, stop.Token);
@@ -138,7 +138,7 @@ public sealed class AudioStreamClientTests
             return source;
         });
         int connected = 0;
-        client.StateChanged += state => { if (state == "Připojeno") Interlocked.Increment(ref connected); };
+        client.StateChanged += state => { if (state == "Connected") Interlocked.Increment(ref connected); };
         using var stop = new CancellationTokenSource();
         Task running = client.RunAsync(null, true, stop.Token);
         try

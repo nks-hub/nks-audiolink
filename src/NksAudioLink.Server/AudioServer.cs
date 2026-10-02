@@ -127,7 +127,7 @@ public sealed class AudioServer
                         catch (Exception ex)
                         {
                             opened = false;
-                            Console.Error.WriteLine($"Zvukový výstup se nepodařilo otevřít: {ex.Message}");
+                            Console.Error.WriteLine($"Could not open audio output: {ex.Message}");
                         }
                     }
                     if (opened) _session!.LastPacketTick = Stopwatch.GetTimestamp();
@@ -217,7 +217,7 @@ public sealed class AudioServer
                 }
                 catch (Exception ex)
                 {
-                    Console.Error.WriteLine($"Zvukový výstup selhal: {ex.Message}");
+                    Console.Error.WriteLine($"Audio output failed: {ex.Message}");
                     lock (_gate) if (ReferenceEquals(_session, active)) CloseSession(releaseNow: true);
                 }
             }
@@ -267,7 +267,7 @@ public sealed class AudioServer
         "alsa" => new AlsaSink("default"),
         _ when description.StartsWith("alsa:", StringComparison.OrdinalIgnoreCase) => new AlsaSink(description[5..]),
         _ when description.StartsWith("wav:", StringComparison.OrdinalIgnoreCase) => new WavSink(description[4..]),
-        _ => throw new ArgumentException($"Neznámý výstup „{description}“. Použijte null, wav:FILE nebo alsa:DEVICE.")
+        _ => throw new ArgumentException($"Unknown audio output '{description}'. Use null, wav:FILE, alsa, or alsa:DEVICE.")
     };
 
     private void CloseSession(bool releaseNow = false)
@@ -302,6 +302,6 @@ public sealed class AudioServer
     private static void DisposeSink(IAudioSink sink)
     {
         try { sink.Dispose(); }
-        catch (Exception ex) { Console.Error.WriteLine($"Zvukový výstup se nepodařilo uvolnit: {ex.Message}"); }
+        catch (Exception ex) { Console.Error.WriteLine($"Could not release audio output: {ex.Message}"); }
     }
 }

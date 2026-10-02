@@ -19,7 +19,7 @@ public partial class App : System.Windows.Application
         catch (AbandonedMutexException) { _ownsInstanceMutex = true; }
         if (!_ownsInstanceMutex)
         {
-            System.Windows.MessageBox.Show("NKS AudioLink už běží. Najdete jej v\u00A0oznamovací oblasti.", "NKS AudioLink",
+            System.Windows.MessageBox.Show("NKS AudioLink is already running. Find it in the notification area.", "NKS AudioLink",
                 MessageBoxButton.OK, MessageBoxImage.Information);
             Shutdown();
             return;

@@ -1,16 +1,17 @@
-# Historie změn
+# Changelog
 
-## Připravované vydání
+## Unreleased
 
-- C#/.NET 9 server pro Linux s přímým výstupem do ALSA, službou systemd a instalátorem.
-- Protokol UDP PCM s volitelným podpisem HMAC, vyrovnávací frontou a korekcí rozdílných hodin zvukových zařízení.
-- Windows klient WASAPI pro zachytávání celého výstupu i záznamového zařízení; tiché rámce zachovávají časovou osu.
-- Obnova po výpadku serveru a chybě zachytávání; po odmítnutí se klient zastaví a čeká na ruční připojení.
-- WPF aplikace s nastavením, vyhledáním serveru přes aktivní rozhraní IPv4, ikonou v oznamovací oblasti a živými statistikami.
-- Režim již nainstalované virtuální zvukovky VB-CABLE a obnova původních výstupů Windows po odpojení nebo následujícím startu po pádu.
-- Příkazový klient pro seznam zařízení, vyhledání serveru, přenos zvuku a testovací tón.
-- Automatické sestavení balíčků pro Windows x64 a Linux x64; označená verze spustí jejich vydání.
-- Přibalený .NET runtime 9.0.20, pevně určené SDK 9.0.318 a licence runtime v balíčcích.
-- Nastavení vláken a síťových dokončení na Linuxu snížilo zátěž procesoru při desetiminutovém přenosu do fyzické ALSA na 1,262 % jednoho jádra. Při cílové frontě 30 ms byly všechny vzorky klientských čítačů chyb nulové; samostatný test s 10 ms přinesl pozdní rámce.
+- C#/.NET 9 Linux server with direct ALSA output, a systemd service and an installer.
+- UDP PCM protocol with optional HMAC authentication, a jitter buffer and audio clock drift correction.
+- Windows WASAPI client for playback capture and recording inputs; silent frames preserve the audio timeline.
+- Recovery after server outages and capture errors. A rejected client stops and requires a new connection action.
+- WPF app with settings, discovery across active IPv4 interfaces, a system tray menu and live statistics.
+- Support for a separately installed VB-CABLE driver, with Windows default-output restoration on disconnect and after restarting the app following a crash.
+- CLI commands for device listing, server discovery, audio streaming and a test tone.
+- Windows x64 and Linux x64 package builds, with publication triggered by a version tag.
+- Bundled .NET runtime 9.0.20, pinned SDK 9.0.318 and runtime license files in the packages.
+- Linux thread and socket settings reduced server CPU to 1.262% of one core during a 600-second physical ALSA stream. All client error samples were zero at a 30 ms target buffer; a separate 10 ms run accumulated late frames.
+- English documentation, app controls, tooltips, CLI help and error messages.
 
-První vydání zůstává připravované, dokud neprojdou zbývající hardwarové a provozní kontroly uvedené v [TODO.md](TODO.md).
+The first release remains pending until the hardware and recovery checks in [TODO.md](TODO.md) are complete.

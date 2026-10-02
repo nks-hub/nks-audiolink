@@ -1,20 +1,20 @@
-# Postup ověřování NKS AudioLinku
+# NKS AudioLink progress
 
-Stav se aktualizuje podle ověřených výsledků. Zaškrtnutí fáze vyžaduje i její skutečný test.
+A phase is checked only after its implementation and required verification are complete.
 
-- [x] 0. Kostra řešení, místní sestavení a testy, veřejný repozitář na GitHubu a zelené CI pro Windows i Linux. Ověřeno 2026-10-02.
-- [x] 1. Přenositelné jádro: UDP protokol, HMAC, vyrovnávací fronta, korekce rozdílných hodin a testy. Ověřeno 2026-10-02: sada jádra, serveru a fronty má 39 úspěšných testů a pokrytí řádků jádra 86,93 %. Simulace ±200 ppm proběhla pro 10 minut virtuálního času.
-- [x] 2. UDP server a výstup do WAV nebo bez zvukové karty; test tónu přes síť a kontrola 440 Hz. Ověřeno 2026-10-02 mezi Windows a Linuxem x86_64: WAV 5,095 s, RMS 8 484, dominantní tón 440 Hz a žádné přetečení.
-- [x] 3. ALSA výstup, služba systemd a desetiminutový test na cílovém Linuxu. Nový server i Windows klient s .NET 9.0.20 při cílové frontě 30 ms udržely přenos po 600 s. Ve všech 60 vzorcích klienta byly podtečení, přetečení, ztráty i pozdní rámce nulové; všech 120 kontrol zastihlo ALSA ve stavu RUNNING. Proces i relace zůstaly stejné, fronta měla 20–25 ms a CPU bylo 1,262 % jednoho jádra. Samostatný test s 10 ms přinesl pozdní rámce.
-- [x] 4. Windows klient WASAPI, tichý tok a skutečný zvuk. Tón zachycený do WAV, živý výstup PC přes grafickou aplikaci do vzdáleného ALSA i souvislý tichý tok byly ověřeny. Majitel potvrdil čistý poslech na receiveru.
-- [ ] 5. Ověřit latenci podle plánu bez mikrofonu; cílový odhad je pod 100 ms. Aplikace při desetiminutovém přenosu ukazovala 71–82 ms. Devět kliknutí z Windows přes LAN do WAV na Linuxu vyšlo 22,96–37,88 ms, medián 31,39 ms, od odeslání UDP paketu. Starší měření na smyčce cílového Linuxu vyšlo 27,36–28,69 ms, medián 28,22 ms. Zbývá posouzení záblesku a kliknutí majitelem; celková fyzická latence zůstává nezměřená.
-- [x] 6. WPF aplikace, oznamovací oblast, nastavení, vyhledání serveru a snímky obrazovky. Ověřeno 2026-10-02: připojení a odpojení proti WAV serveru, živé statistiky, změna zesílení za běhu, vyhledání skutečné služby a snímek v `docs/screenshots`.
-- [x] 7. Režim virtuální zvukovky a bezpečná obnova výchozího výstupu. Ověřeno 2026-10-02: samostatná instalace podepsaného VB-CABLE po souhlasu majitele bez restartu PC, skutečný 440 Hz přenos CABLE Input → CABLE Output → UDP WAV a obnova všech tří výchozích rolí Windows po odpojení i dalším spuštění po simulovaném pádu. Ovladač není součástí projektu.
-- [ ] 8. Obnova po výpadku sítě, restartu serveru a uspání; test převzetí obsazeného serveru. Skutečný klient WASAPI po restartu služby obnovil přenos v LAN. Sedm Windows integračních testů pokrývá tichý tok, pozdní start a restart serveru, nové zachytávání po chybě zařízení, zastavení po odmítnutí a desetisekundový výpadek UDP s návratem stejné relace do 5 s. Integrační testy pokrývají také převzetí serveru a opětovné otevření výstupu. Fyzické odpojení kabelu a uspání a probuzení PC zbývají.
-- [ ] 9. Vydání, README, historie změn a balíčky. Místní balíčky pro Windows a Linux byly sestaveny a zkontrolovány; Windows příkazový klient i Linux server se z nich spustily. Workflow umí ručně sestavit artefakty bez vydání. Tag `v0.1.0` zbývá po dokončení hardwarových kontrol.
+- [x] 0. Solution scaffold, local build and tests, public GitHub repository, and passing Windows/Linux CI. Verified on 2026-10-02.
+- [x] 1. Core protocol, HMAC, jitter buffer, resampling and clock drift tests. The portable Core/server/queue suite has 39 passing tests; Core line coverage is 86.93%. Drift simulation covers ±200 ppm over ten minutes of virtual time.
+- [x] 2. UDP server with WAV and null outputs. A Windows-to-Linux 440 Hz test produced 5.095 seconds of WAV audio, RMS 8,484, and no overruns.
+- [x] 3. ALSA output, systemd deployment and a ten-minute hardware run. The .NET 9.0.20 server and Windows client ran for 600 seconds at a 30 ms target buffer. All 60 client samples had zero underruns, overruns, lost and late frames; all 120 ALSA samples were RUNNING. The process and session stayed unchanged, the server buffer held 20–25 ms, and server CPU was 1.262% of one core. A separate 10 ms run accumulated late frames.
+- [x] 4. Windows WASAPI client, continuous silent frames and real playback. Captured tone/WAV analysis and live PC-to-ALSA streaming passed. The owner confirmed clean receiver playback.
+- [ ] 5. Latency checks specified by the no-microphone test plan, targeting an estimate below 100 ms. The app estimated 71–82 ms during the ten-minute stream. Nine Windows-to-Linux LAN clicks took 22.96–37.88 ms, median 31.39 ms, from UDP send to WAV write. Earlier Linux loopback measurements were 27.36–28.69 ms, median 28.22 ms. The owner still needs to assess flash/click synchronization. Physical end-to-end latency remains unmeasured.
+- [x] 6. WPF app, system tray, settings, server discovery and screenshots. Connect/disconnect against a WAV server, live statistics, gain changes while streaming, discovery of the deployed service and a screenshot in `docs/screenshots` were verified.
+- [x] 7. Virtual-device mode and Windows default-output restoration. The owner authorized a separate signed VB-CABLE installation, completed without restarting the test PC. A 440 Hz CABLE Input → CABLE Output → UDP WAV stream passed. All three Windows default-output roles were restored on disconnect and on app restart after a simulated crash. The driver is not bundled.
+- [ ] 8. Recovery after network loss, server restart and PC sleep/resume; session takeover. The real WASAPI client recovered after a LAN server restart. Seven Windows integration tests cover silence, late server startup, server restart, capture recreation, terminal rejection and a ten-second UDP outage with same-session recovery within five seconds. Server integration tests cover takeover and reopening the output. Physical cable disconnection and PC sleep/resume remain.
+- [ ] 9. Release workflow, complete README/changelog and verified packages. Windows and Linux packages have been built and inspected; the packaged Windows CLI and Linux server start successfully. Manual workflow runs build artifacts without publishing a release. Tag `v0.1.0` remains pending until the hardware checks pass.
 
-## Pravidla
+## Project rules
 
-- Nevkládat do Git historie údaje z interního inventáře, přístupové údaje, lokální konfiguraci ani binárky cizího ovladače.
-- Změny verzovat po smysluplných celcích jako Conventional Commits.
-- Přímé ovládání receiveru přes jeho vyhrazené řídicí spojení nepoužívat.
+- Keep internal inventory, credentials, local configuration and third-party driver binaries out of Git history.
+- Use Conventional Commits for meaningful changes.
+- Do not use the receiver's dedicated direct-control connection during tests.

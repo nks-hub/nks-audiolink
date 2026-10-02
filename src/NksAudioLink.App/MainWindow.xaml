@@ -18,53 +18,53 @@
       <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
       <Grid Grid.Row="0" Margin="0,0,0,22">
         <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-        <StackPanel><TextBlock Text="NKS AudioLink" FontSize="27" FontWeight="SemiBold"/><TextBlock Text="Zvuk z&#160;tohoto počítače na vzdálené zvukové zařízení" Foreground="{StaticResource Muted}" Margin="0,3,0,0"/></StackPanel>
-        <Border Grid.Column="1" Background="#1B403B" CornerRadius="16" Padding="14,8" VerticalAlignment="Center"><TextBlock x:Name="StatusText" Text="Odpojeno" Foreground="#8DE8BA" FontWeight="SemiBold"/></Border>
+        <StackPanel><TextBlock Text="NKS AudioLink" FontSize="27" FontWeight="SemiBold"/><TextBlock Text="Send PC audio to a remote sound device" Foreground="{StaticResource Muted}" Margin="0,3,0,0"/></StackPanel>
+        <Border Grid.Column="1" Background="#1B403B" CornerRadius="16" Padding="14,8" VerticalAlignment="Center"><TextBlock x:Name="StatusText" Text="Disconnected" Foreground="#8DE8BA" FontWeight="SemiBold"/></Border>
       </Grid>
       <Border x:Name="ServerCard" Grid.Row="1" Style="{StaticResource Card}">
         <StackPanel><TextBlock Text="SERVER" FontSize="12" FontWeight="Bold" Foreground="#67D9C6" Margin="0,0,0,13"/>
           <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="110"/><ColumnDefinition Width="100"/></Grid.ColumnDefinitions>
-            <StackPanel Margin="0,0,12,0"><TextBlock Text="Adresa nebo název" Style="{StaticResource Label}"/><TextBox x:Name="ServerBox" Text="127.0.0.1"/></StackPanel>
+            <StackPanel Margin="0,0,12,0"><TextBlock Text="Address or host name" Style="{StaticResource Label}"/><TextBox x:Name="ServerBox" Text="127.0.0.1"/></StackPanel>
             <StackPanel Grid.Column="1" Margin="0,0,12,0"><TextBlock Text="UDP port" Style="{StaticResource Label}"/><TextBox x:Name="PortBox" Text="7355"/></StackPanel>
-            <Button Grid.Column="2" x:Name="DiscoverButton" Content="Najít" VerticalAlignment="Bottom" Click="Discover_Click"/>
+            <Button Grid.Column="2" x:Name="DiscoverButton" Content="Find" VerticalAlignment="Bottom" Click="Discover_Click"/>
           </Grid>
-          <TextBlock x:Name="DiscoveryText" Text="Zadejte adresu nebo najděte server v&#160;místní síti." Foreground="{StaticResource Muted}" FontSize="12" Margin="0,8,0,0"/>
-          <StackPanel Margin="0,12,0,0"><TextBlock Text="Sdílený klíč (Base64, pokud je vyžadován)" Style="{StaticResource Label}"/><PasswordBox x:Name="PskBox"/></StackPanel>
+          <TextBlock x:Name="DiscoveryText" Text="Enter an address or find a server on the local network." Foreground="{StaticResource Muted}" FontSize="12" Margin="0,8,0,0"/>
+          <StackPanel Margin="0,12,0,0"><TextBlock Text="Shared key (Base64, if required)" Style="{StaticResource Label}"/><PasswordBox x:Name="PskBox"/></StackPanel>
         </StackPanel>
       </Border>
       <Border x:Name="SourceCard" Grid.Row="2" Style="{StaticResource Card}">
-        <StackPanel><TextBlock Text="ZDROJ ZVUKU" FontSize="12" FontWeight="Bold" Foreground="#67D9C6" Margin="0,0,0,12"/>
-          <StackPanel Orientation="Horizontal"><RadioButton x:Name="LoopbackRadio" GroupName="Mode" Content="Celý zvuk PC" IsChecked="True" Checked="Mode_Checked"/><RadioButton x:Name="VirtualRadio" GroupName="Mode" Content="Virtuální zvukovka" Checked="Mode_Checked"/><RadioButton x:Name="CaptureRadio" GroupName="Mode" Content="Jiný vstup" Checked="Mode_Checked"/></StackPanel>
-          <TextBlock x:Name="ModeDescription" Text="Odesílá zvuk vybraného výstupu. Současně hraje i&#160;na tomto počítači." Foreground="{StaticResource Muted}" FontSize="12" Margin="0,3,0,12"/>
-          <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><ComboBox x:Name="DeviceCombo" DisplayMemberPath="Name" SelectedValuePath="Id" MinHeight="39"/><Button Grid.Column="1" Content="Obnovit" Margin="12,0,0,0" Click="RefreshDevices_Click"/></Grid>
+        <StackPanel><TextBlock Text="AUDIO SOURCE" FontSize="12" FontWeight="Bold" Foreground="#67D9C6" Margin="0,0,0,12"/>
+          <StackPanel Orientation="Horizontal"><RadioButton x:Name="LoopbackRadio" GroupName="Mode" Content="All PC audio" IsChecked="True" Checked="Mode_Checked"/><RadioButton x:Name="VirtualRadio" GroupName="Mode" Content="Virtual audio device" Checked="Mode_Checked"/><RadioButton x:Name="CaptureRadio" GroupName="Mode" Content="Other input" Checked="Mode_Checked"/></StackPanel>
+          <TextBlock x:Name="ModeDescription" Text="Sends audio from the selected output. It still plays on this PC." Foreground="{StaticResource Muted}" FontSize="12" Margin="0,3,0,12"/>
+          <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><ComboBox x:Name="DeviceCombo" DisplayMemberPath="Name" SelectedValuePath="Id" MinHeight="39"/><Button Grid.Column="1" Content="Refresh" Margin="12,0,0,0" Click="RefreshDevices_Click"/></Grid>
           <TextBlock x:Name="DeviceHint" Foreground="#F7CC88" FontSize="12" Margin="0,9,0,0" TextWrapping="Wrap"/>
-          <Button x:Name="CableInfoButton" Content="Web VB-CABLE" HorizontalAlignment="Left" Margin="0,9,0,0" Visibility="Collapsed" Click="CableInfo_Click"/>
+          <Button x:Name="CableInfoButton" Content="VB-CABLE website" HorizontalAlignment="Left" Margin="0,9,0,0" Visibility="Collapsed" Click="CableInfo_Click"/>
         </StackPanel>
       </Border>
       <Border Grid.Row="3" Style="{StaticResource Card}">
-        <StackPanel><TextBlock Text="PŘENOS" FontSize="12" FontWeight="Bold" Foreground="#67D9C6" Margin="0,0,0,13"/>
+        <StackPanel><TextBlock Text="STREAM" FontSize="12" FontWeight="Bold" Foreground="#67D9C6" Margin="0,0,0,13"/>
           <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-            <StackPanel Margin="0,0,25,0"><DockPanel><TextBlock Text="Zesílení" Style="{StaticResource Label}"/><TextBlock x:Name="GainValue" Text="100&#160;%" HorizontalAlignment="Right"/></DockPanel><Slider x:Name="GainSlider" Minimum="0" Maximum="200" Value="100" TickFrequency="5" ValueChanged="GainSlider_Changed"/></StackPanel>
-            <StackPanel Grid.Column="1" ToolTip="Cílová délka jitter bufferu na serveru. Vyšší hodnota pomáhá při kolísání sítě, ale zvětšuje zpoždění."><DockPanel><TextBlock Text="Rezerva zvuku" Style="{StaticResource Label}"/><TextBlock x:Name="LatencyValue" Text="30&#160;ms" HorizontalAlignment="Right"/></DockPanel><Slider x:Name="LatencySlider" Minimum="10" Maximum="200" Value="30" TickFrequency="5" IsSnapToTickEnabled="True" ValueChanged="LatencySlider_Changed"/></StackPanel>
+            <StackPanel Margin="0,0,25,0"><DockPanel><TextBlock Text="Gain" Style="{StaticResource Label}"/><TextBlock x:Name="GainValue" Text="100%" HorizontalAlignment="Right"/></DockPanel><Slider x:Name="GainSlider" Minimum="0" Maximum="200" Value="100" TickFrequency="5" ValueChanged="GainSlider_Changed"/></StackPanel>
+            <StackPanel Grid.Column="1" ToolTip="Target size of the server jitter buffer. A larger buffer tolerates more network variation but adds delay."><DockPanel><TextBlock Text="Target buffer" Style="{StaticResource Label}"/><TextBlock x:Name="LatencyValue" Text="30 ms" HorizontalAlignment="Right"/></DockPanel><Slider x:Name="LatencySlider" Minimum="10" Maximum="200" Value="30" TickFrequency="5" IsSnapToTickEnabled="True" ValueChanged="LatencySlider_Changed"/></StackPanel>
           </Grid>
-          <TextBlock Text="100&#160;% nemění hlasitost. Vyšší zesílení může zvuk zkreslit. Rezervu nastavte před připojením; 10&#160;ms ponechává méně prostoru pro výkyvy sítě." Foreground="{StaticResource Muted}" FontSize="12" Margin="0,12,0,0" TextWrapping="Wrap"/>
+          <TextBlock Text="100% keeps the original level. Higher gain may clip. Set the buffer before connecting; 10 ms leaves less room for network variation." Foreground="{StaticResource Muted}" FontSize="12" Margin="0,12,0,0" TextWrapping="Wrap"/>
         </StackPanel>
       </Border>
       <StackPanel Grid.Row="4">
         <Grid Margin="0,2,0,16"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="190"/></Grid.ColumnDefinitions>
-          <CheckBox x:Name="StartWithWindowsCheck" Content="Spouštět s&#160;Windows" VerticalAlignment="Center" Checked="StartWithWindows_Changed" Unchecked="StartWithWindows_Changed"/>
-          <Button x:Name="ConnectButton" Grid.Column="1" Content="Připojit" Background="#157F75" FontWeight="SemiBold" FontSize="15" Click="Connect_Click"/>
+          <CheckBox x:Name="StartWithWindowsCheck" Content="Start with Windows" VerticalAlignment="Center" Checked="StartWithWindows_Changed" Unchecked="StartWithWindows_Changed"/>
+          <Button x:Name="ConnectButton" Grid.Column="1" Content="Connect" Background="#157F75" FontWeight="SemiBold" FontSize="15" Click="Connect_Click"/>
         </Grid>
-        <Border Style="{StaticResource Card}" Margin="0"><StackPanel><TextBlock Text="ŽIVÝ STAV" FontSize="12" FontWeight="Bold" Foreground="#67D9C6" Margin="0,0,0,15"/>
-          <UniformGrid Columns="4"><StackPanel ToolTip="Odhad podle zachytávání, sítě a&#160;front serveru. Nezahrnuje zpoždění receiveru ani reproduktorů."><TextBlock Text="Odhad zpoždění" Foreground="{StaticResource Muted}" FontSize="12"/><TextBlock x:Name="EndToEndText" Text="–" FontSize="21" FontWeight="SemiBold"/></StackPanel>
-            <StackPanel ToolTip="Aktuální zaplnění jitter bufferu na serveru."><TextBlock Text="Rezerva serveru" Foreground="{StaticResource Muted}" FontSize="12"/><TextBlock x:Name="BufferText" Text="–" FontSize="21" FontWeight="SemiBold"/></StackPanel>
-            <StackPanel ToolTip="Zvuk čekající ve frontě ALSA na serveru. Nezahrnuje zpoždění receiveru ani reproduktorů."><TextBlock Text="Čekání zvukovky" Foreground="{StaticResource Muted}" FontSize="12"/><TextBlock x:Name="SinkDelayText" Text="–" FontSize="21" FontWeight="SemiBold"/></StackPanel>
-            <StackPanel><TextBlock Text="Odezva sítě" Foreground="{StaticResource Muted}" FontSize="12"/><TextBlock x:Name="RttText" Text="–" FontSize="21" FontWeight="SemiBold"/></StackPanel></UniformGrid>
-          <UniformGrid Columns="4" Margin="0,16,0,0"><StackPanel><TextBlock Text="Ztráty" Foreground="{StaticResource Muted}" FontSize="12"/><TextBlock x:Name="LostText" Text="–" FontSize="18"/></StackPanel>
-            <StackPanel><TextBlock Text="Pozdní rámce" Foreground="{StaticResource Muted}" FontSize="12"/><TextBlock x:Name="LateText" Text="–" FontSize="18"/></StackPanel>
-            <StackPanel><TextBlock Text="Podtečení" Foreground="{StaticResource Muted}" FontSize="12"/><TextBlock x:Name="UnderrunText" Text="–" FontSize="18"/></StackPanel>
-            <StackPanel><TextBlock Text="Přetečení" Foreground="{StaticResource Muted}" FontSize="12"/><TextBlock x:Name="OverrunText" Text="–" FontSize="18"/></StackPanel></UniformGrid>
-          <TextBlock x:Name="DetailText" Text="Připraveno k&#160;připojení." Foreground="{StaticResource Muted}" FontSize="12" Margin="0,14,0,0" TextWrapping="Wrap"/>
+        <Border Style="{StaticResource Card}" Margin="0"><StackPanel><TextBlock Text="LIVE STATUS" FontSize="12" FontWeight="Bold" Foreground="#67D9C6" Margin="0,0,0,15"/>
+          <UniformGrid Columns="4"><StackPanel ToolTip="Estimated from capture, network, and server queues. Excludes receiver and speaker delay."><TextBlock Text="Estimated delay" Foreground="{StaticResource Muted}" FontSize="12"/><TextBlock x:Name="EndToEndText" Text="–" FontSize="21" FontWeight="SemiBold"/></StackPanel>
+            <StackPanel ToolTip="Current occupancy of the server jitter buffer."><TextBlock Text="Server buffer" Foreground="{StaticResource Muted}" FontSize="12"/><TextBlock x:Name="BufferText" Text="–" FontSize="21" FontWeight="SemiBold"/></StackPanel>
+            <StackPanel ToolTip="Audio queued in ALSA on the server. Excludes receiver and speaker delay."><TextBlock Text="Output queue delay" Foreground="{StaticResource Muted}" FontSize="12"/><TextBlock x:Name="SinkDelayText" Text="–" FontSize="21" FontWeight="SemiBold"/></StackPanel>
+            <StackPanel><TextBlock Text="Network RTT" Foreground="{StaticResource Muted}" FontSize="12"/><TextBlock x:Name="RttText" Text="–" FontSize="21" FontWeight="SemiBold"/></StackPanel></UniformGrid>
+          <UniformGrid Columns="4" Margin="0,16,0,0"><StackPanel><TextBlock Text="Lost" Foreground="{StaticResource Muted}" FontSize="12"/><TextBlock x:Name="LostText" Text="–" FontSize="18"/></StackPanel>
+            <StackPanel><TextBlock Text="Late frames" Foreground="{StaticResource Muted}" FontSize="12"/><TextBlock x:Name="LateText" Text="–" FontSize="18"/></StackPanel>
+            <StackPanel><TextBlock Text="Underruns" Foreground="{StaticResource Muted}" FontSize="12"/><TextBlock x:Name="UnderrunText" Text="–" FontSize="18"/></StackPanel>
+            <StackPanel><TextBlock Text="Overruns" Foreground="{StaticResource Muted}" FontSize="12"/><TextBlock x:Name="OverrunText" Text="–" FontSize="18"/></StackPanel></UniformGrid>
+          <TextBlock x:Name="DetailText" Text="Ready to connect." Foreground="{StaticResource Muted}" FontSize="12" Margin="0,14,0,0" TextWrapping="Wrap"/>
         </StackPanel></Border>
       </StackPanel>
     </Grid>
