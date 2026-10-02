@@ -6,10 +6,11 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net9.0-windows</TargetFramework>
+    <TargetFramework>net9.0-windows10.0.19041</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
   </PropertyGroup>
 
 </Project>
