@@ -8,7 +8,7 @@ Stav k 2026-10-02. Lokální konfigurace a nezkrácené logy zůstávají mimo
 | Pokrytí jádra | 86,93 % řádků a 76,01 % větví podle Cobertura; požadavek alespoň 80 % řádků splněn |
 | Windows klient | 7 integračních testů přes místní UDP spojení prošlo: tichý tok, pozdní start, restart serveru, nové zachytávání po chybě zařízení, zastavení po odmítnutí obsazeného serveru nebo nepodporovaného formátu a desetisekundový výpadek UDP |
 | Windows → Linux WAV | Tón 440 Hz, délka 5,095 s, RMS 8 484; nulová přetečení a pozdní rámce |
-| Nasazený ALSA server se systemd | Předchozí přenos trval 600 s a při cílové frontě 30 ms neměl podtečení, přetečení, ztráty ani pozdní rámce. Nová verze běžela 600 s se stabilním procesem a relací; všech 120 kontrol zastihlo ALSA ve stavu RUNNING, záznam služby byl bez chyb. Při ručně zvolených 10 ms však přibyly chyby toku. |
+| Nasazený ALSA server se systemd | Nový server i Windows klient s .NET 9.0.20 udržely přenos po 600 s při cílové frontě 30 ms. Všech 60 vzorků klientských čítačů chyb bylo nulových, ALSA byla ve všech 120 kontrolách RUNNING a proces i relace zůstaly stejné. |
 | Uvolnění zařízení | Po odpojení klienta služba uvolnila ALSA zařízení po nastaveném intervalu |
 | Skutečný WASAPI klient | Zachycený zvuk potvrzen ve WAV; přenos na LAN se obnovil po restartu systemd služby |
 | Desetisekundový výpadek UDP | Po návratu server přijal stejnou relaci do 5 s a zvuk pokračoval bez nového zachytávání; fyzický kabel nebyl odpojen |
@@ -42,12 +42,14 @@ Následný profil podle `/proc` našel většinu spotřeby ve vláknech ThreadPo
 
 Všechny izolované běhy měly nulová podtečení a pozdní rámce; odesílač nezmeškal žádný termín. Linuxová binárka a jednotka systemd používají poslední variantu. Po kontrole `systemd-analyze verify` byly aktivovány restartem služby. Windows klient obnovil relaci během jedné sekundy a místní konfigurace zůstala zachována.
 
-Nový server pak běžel 600 s se skutečným ALSA výstupem. Proces i relace zůstaly stejné, všech 120 pravidelných vzorků zachytilo ALSA ve stavu RUNNING a záznam služby neobsahoval chybu. Zátěž procesoru byla **1,277 % jednoho jádra**, tedy pod plánovanou hranicí 2 %. Při uživatelem zvolené cílové frontě 10 ms však čítače ztrát, pozdních rámců a podtečení vzrostly z 3 na 59; přetečení zůstalo na nule. V posledních dvou minutách čítače dále nerostly. Tento běh není bezchybným dlouhodobým testem. Předchozí běh trval 600 s a při frontě 30 ms chyby neměl; se stejnou hodnotou se nová verze ještě neotestovala po celých 600 s.
+První sledování nového serveru se skutečným ALSA výstupem trvalo 600 s. Proces i relace zůstaly stejné, všech 120 pravidelných vzorků zachytilo ALSA ve stavu RUNNING a záznam služby neobsahoval chybu. Zátěž procesoru byla **1,277 % jednoho jádra**. Při uživatelem zvolené cílové frontě 10 ms však čítače ztrát, pozdních rámců a podtečení vzrostly z 3 na 59; přetečení zůstalo na nule. Při pozdějším odpojení této relace server zaznamenal konečnou hodnotu 80 ve všech třech čítačích. Tento profil neprošel zkouškou bez podtečení.
+
+Druhý běh použil nový Windows klient s .NET 9.0.20 a výchozí cílovou frontu **30 ms**. Během 600 s zůstal serverový proces i relace stejný, všech 120 vzorků ALSA bylo RUNNING a všech 60 vzorků klienta ukazovalo připojení s nulovými ztrátami, pozdními rámci, podtečením i přetečením. Záznam nové relace neobsahoval chybu. Fronta serveru měla 20–25 ms, odhad zpoždění v aplikaci byl 71–82 ms a zátěž serveru **1,262 % jednoho jádra**, pod plánovanou hranicí 2 %. Zátěž je vypočtená z rozdílu procesových CPU ticků a monotónního času; neudává procento celého vícejádrového stroje.
 
 ## Zbývající ověření na hardwaru
 
 - Posouzení synchronizace s videem; čistý poslech majitel již potvrdil.
 - Fyzické uspání a probuzení PC, odpojení a opětovné připojení síťového kabelu.
-- Nezávislé měření celkové latence a bezchybný dlouhý test nové verze s cílovou frontou 30 ms. Limit zátěže serveru pod 2 % byl splněn.
+- Posouzení záblesku a kliknutí podle plánu měření bez mikrofonu. Celková fyzická latence zůstává nezměřená; výpočet ani zápis do WAV ji nenahrazují.
 
 Během poslechu se tyto rušivé scénáře neprovádějí. Seznam fází a jejich stav je v [TODO.md](../TODO.md).

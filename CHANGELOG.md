@@ -11,6 +11,6 @@
 - Příkazový klient pro seznam zařízení, vyhledání serveru, přenos zvuku a testovací tón.
 - Automatické sestavení balíčků pro Windows x64 a Linux x64; označená verze spustí jejich vydání.
 - Přibalený .NET runtime 9.0.20, pevně určené SDK 9.0.318 a licence runtime v balíčcích.
-- Nastavení vláken a síťových dokončení na Linuxu snížilo zátěž procesoru při přenosu do fyzické ALSA trvajícím 600 s na 1,277 % jednoho jádra. Při cílové frontě 10 ms přibyly chyby toku; dlouhý test s 30 ms zbývá.
+- Nastavení vláken a síťových dokončení na Linuxu snížilo zátěž procesoru při desetiminutovém přenosu do fyzické ALSA na 1,262 % jednoho jádra. Při cílové frontě 30 ms byly všechny vzorky klientských čítačů chyb nulové; samostatný test s 10 ms přinesl pozdní rámce.
 
 První vydání zůstává připravované, dokud neprojdou zbývající hardwarové a provozní kontroly uvedené v [TODO.md](TODO.md).

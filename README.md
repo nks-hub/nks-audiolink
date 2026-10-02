@@ -65,13 +65,13 @@ Server pro Linux x64 publikujte příkazem `dotnet publish src/NksAudioLink.Serv
 | Ověření | Výsledek a hranice |
 |---|---|
 | Automatické testy | 39 testů přenositelného Core/serveru/fronty a 7 Windows integračních UDP testů prošlo. Pokrytí Core: **86,93 % řádků**, 76,01 % větví. |
-| Skutečná LAN a ALSA služba | Předchozí verze běžela **600 s** při cílové frontě 30 ms bez podtečení, přetečení, ztrát a pozdních rámců. Nová verze běžela 600 s se stabilní relací; všech 120 kontrol zastihlo ALSA ve stavu RUNNING. Při ručně zvolených 10 ms však čítače ztrát, pozdních rámců a podtečení vzrostly z 3 na 59. Přetečení zůstalo na nule. |
+| Skutečná LAN a ALSA služba | Nový server i Windows klient s .NET 9.0.20 zvládly **desetiminutový přenos při 30 ms** bez podtečení, přetečení, ztrát a pozdních rámců ve všech 60 vzorcích klienta. ALSA byla ve všech 120 kontrolách ve stavu RUNNING; proces i relace zůstaly stejné. Při samostatném testu s 10 ms přibyly pozdní rámce, proto je výchozí hodnota 30 ms. |
 | Tón a virtuální režim | Přenos 440 Hz tónu z Windows na Linux do WAV trval 5,095 s, RMS 8 484, bez přetečení a pozdních rámců. Přenos přes CABLE Input a CABLE Output byl potvrzen analýzou WAV. |
 | Odhad latence v aplikaci | Při živém přenosu **≈74 ms**: WASAPI 10 ms, cílová fronta klienta ≈15 ms, rámec 5 ms, polovina doby obousměrné síťové odezvy (RTT) ≈0,25 ms, vyrovnávací fronta serveru 25 ms a zpoždění ALSA 19 ms. Jde o součet známých částí, ne o fyzické měření celého řetězce. |
 | Změřená latence po LAN | U devíti kliknutí trval úsek od odeslání UDP paketu na Windows po zápis do WAV na Linuxu **22,96–37,88 ms**, medián **31,39 ms**. Měření nezahrnuje zachytávání přes WASAPI, ALSA ani receiver. |
-| CPU | Nový server během přenosu do fyzické ALSA trvajícího 600 s spotřeboval **1,277 % jednoho jádra**; předchozí verze spotřebovala přibližně 3 %. Izolovaný test bez zvukové karty naměřil po úpravě 1,40 %. |
+| CPU | Nový server během desetiminutového přenosu do fyzické ALSA při 30 ms spotřeboval **1,262 % jednoho jádra**; předchozí verze spotřebovala přibližně 3 %. Izolovaný test bez zvukové karty naměřil po úpravě 1,40 %. |
 
-Majitel potvrdil čistý poslech na receiveru. Zbývá posoudit synchronizaci s videem, nezávisle změřit celkovou fyzickou latenci, vyzkoušet uspání PC a fyzické odpojení sítě a zopakovat dlouhý test nové služby s cílovou frontou 30 ms. [Úplný protokol ověření](docs/VALIDATION.md) rozlišuje měření od odhadů; [TODO.md](TODO.md) sleduje zbývající fáze.
+Majitel potvrdil čistý poslech na receiveru. Zbývá posoudit synchronizaci s videem a vyzkoušet uspání PC a fyzické odpojení sítě. Celková fyzická latence nebyla nezávisle změřena. [Úplný protokol ověření](docs/VALIDATION.md) rozlišuje měření od odhadů; [TODO.md](TODO.md) sleduje zbývající fáze.
 
 ## Dokumentace
 
