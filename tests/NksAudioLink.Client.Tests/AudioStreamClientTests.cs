@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using NksAudioLink.Client;
@@ -74,6 +75,55 @@ public sealed class AudioStreamClientTests
         }
         finally { await Stop(stop, running); }
         Assert.True(source.Disposed);
+    }
+
+    [Fact]
+    public async Task TenSecondNetworkOutageReacceptsSameSessionAndKeepsCapture()
+    {
+        using var server = new PacketServer();
+        var sources = new ConcurrentQueue<FakeSource>();
+        var client = new AudioStreamClient(Config(server.Port), (_, _) =>
+        {
+            var source = new FakeSource();
+            sources.Enqueue(source);
+            return source;
+        });
+        int waitingStates = 0;
+        client.StateChanged += state =>
+        {
+            if (state == "Čeká na server") Interlocked.Increment(ref waitingStates);
+        };
+        using var stop = new CancellationTokenSource();
+        Task running = client.RunAsync(null, true, stop.Token);
+        try
+        {
+            await Eventually(() => server.Audio.Count >= 3 && server.AcceptedStatsSent >= 1,
+                TimeSpan.FromSeconds(5));
+            int beforeOutage = server.Audio.Count;
+            int statsBeforeOutage = server.AcceptedStatsSent;
+            uint session = server.Audio.Last().Session;
+            server.BeginOutage();
+            try
+            {
+                // Longer than the client's three-second STATS timeout and the
+                // production server's three-second session timeout.
+                await Task.Delay(TimeSpan.FromSeconds(10));
+                Assert.True(Volatile.Read(ref waitingStates) >= 1);
+                Assert.Equal(statsBeforeOutage, server.AcceptedStatsSent);
+                Assert.False(running.IsCompleted);
+                Assert.Single(sources);
+                Assert.False(sources.Single().Disposed);
+            }
+            finally { server.EndOutage(); }
+
+            await Eventually(() => server.AcceptedStatsSent >= 2 &&
+                server.Audio.Count >= beforeOutage + 3, TimeSpan.FromSeconds(5));
+            Assert.Equal(session, server.Audio.Last().Session);
+            Assert.Single(sources);
+            Assert.False(sources.Single().Disposed);
+        }
+        finally { await Stop(stop, running); }
+        Assert.True(sources.Single().Disposed);
     }
 
     [Fact]
@@ -185,11 +235,27 @@ public sealed class AudioStreamClientTests
         private readonly ConcurrentDictionary<uint, byte> _acceptedSessions = new();
         private int _helloCount;
         private int _acceptedStatsSent;
+        private int _dropTraffic;
+        private long _outageStartTick;
         private int _disposed;
         public ConcurrentQueue<AudioPacket> Audio { get; } = new();
         public int Port { get; }
         public int HelloCount => Volatile.Read(ref _helloCount);
         public int AcceptedStatsSent => Volatile.Read(ref _acceptedStatsSent);
+
+        public void BeginOutage()
+        {
+            Volatile.Write(ref _outageStartTick, Stopwatch.GetTimestamp());
+            Volatile.Write(ref _dropTraffic, 1);
+        }
+
+        public void EndOutage()
+        {
+            // Model the server forgetting the session once its idle TTL elapsed.
+            if (Stopwatch.GetElapsedTime(Volatile.Read(ref _outageStartTick)) >= TimeSpan.FromSeconds(3))
+                _acceptedSessions.Clear();
+            Volatile.Write(ref _dropTraffic, 0);
+        }
 
         public PacketServer(int port = 0)
         {
@@ -205,6 +271,7 @@ public sealed class AudioStreamClientTests
                 while (!_stop.IsCancellationRequested)
                 {
                     var packet = await _udp.ReceiveAsync(_stop.Token);
+                    if (Volatile.Read(ref _dropTraffic) == 1) continue;
                     if (!Protocol.TryRead(packet.Buffer, [], out var header, out var body)) continue;
                     if (header.Type == PacketType.Hello && HelloMessage.TryRead(body, out var hello) && hello.IsSupported)
                     {
