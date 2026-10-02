@@ -1,6 +1,6 @@
 # Validation
 
-Status as of 2026-10-02. CI for revision `253d2cd` passed with 39 portable tests and 7 Windows client tests. Local configuration and full logs remain outside Git.
+Status as of 2026-10-02. CI for revision `af12a5b` passed with 39 portable tests and 7 Windows client tests. The Windows app, CLI, server and documentation are in English. Local configuration and full logs remain outside Git.
 
 | Area | Result |
 |---|---|
@@ -19,6 +19,8 @@ Status as of 2026-10-02. CI for revision `253d2cd` passed with 39 portable tests
 | Volume | Both channels of the hardware mixer's `Speaker` control were at −10 dB. After changing them to 0 dB and returning application gain from 200% to 100%, the owner confirmed that the volume was right. The CABLE device and active application in Windows were at 100% and unmuted. |
 | Live PC output | A nonzero signal was present on the selected playback device, the client was connected, and physical ALSA output was RUNNING |
 | Prepared packages | The packaged Windows CLI started; the single-file Linux server ran `--help` on the target without an installed .NET runtime |
+
+The deployed English app retained virtual-device mode, a 30 ms target buffer and 100% gain. After the English server was activated with a service restart, its log recorded the existing client session reconnecting two seconds later. Physical ALSA output returned to RUNNING, and all four client error counters were zero when checked. The PC was not restarted.
 
 VB-CABLE was installed separately with the vendor's signed installer after the owner's approval. The test PC was not restarted. Neither the driver nor its installer is part of this project.
 
@@ -48,8 +50,9 @@ The second run used the updated Windows client on .NET 9.0.20 and the default **
 
 ## Remaining hardware checks
 
-- Assess synchronization with video. The owner has already confirmed clean audio.
-- Physically suspend and wake the PC, then unplug and reconnect the network cable.
-- Assess flash and click timing using the plan for testing without a microphone. Total physical latency remains unmeasured; neither a calculation nor a WAV write replaces that measurement.
+- Have the owner assess flash and click synchronization using the prepared test video. Clean audio has already been confirmed.
+- Unplug the PC network cable for ten seconds and reconnect it; separately suspend and wake the PC. Observe session recovery and output-device release.
 
-These disruptive scenarios are not run during listening. See [TODO.md](../TODO.md) for phase status.
+Physical end-to-end latency remains unmeasured. The original plan uses a calculation, a timestamped LAN/WAV test and the owner's video assessment; an independent measurement through the receiver is not an additional release gate.
+
+Cable disconnection and PC suspension require the owner's participation. See [TODO.md](../TODO.md) for phase status.
