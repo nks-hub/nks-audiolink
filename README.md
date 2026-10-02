@@ -12,6 +12,8 @@ AudioLink provides a Windows WPF app, a command-line client and a Linux systemd 
 
 ![NKS AudioLink Windows app with connection controls and live statistics](docs/screenshots/client.png)
 
+The app is connected to a localhost diagnostic server in this screenshot. Its null output does not play through a physical sound card.
+
 ## Features
 
 - **Three capture modes:** the full output of a selected playback device, a separately installed VB-CABLE virtual device, or another recording input. Virtual mode switches the Windows default output while connected and restores it on disconnect.
