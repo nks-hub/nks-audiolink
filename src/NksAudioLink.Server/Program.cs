@@ -5,8 +5,12 @@ try
 {
     if (args.Length == 0 || args[0] is "help" or "--help")
     {
-        Console.WriteLine("nksaudio-server run [--config FILE] [--sink null|wav:FILE|alsa:DEVICE] [--port PORT]");
-        Console.WriteLine("nksaudio-server devices");
+        Console.WriteLine("Použití:");
+        Console.WriteLine("  NksAudioLink.Server run [--config FILE] [--sink null|wav:FILE|alsa:DEVICE] [--port PORT]");
+        Console.WriteLine("    Spustí příjem zvuku. FILE je cesta k\u00A0souboru JSON pro --config nebo k\u00A0souboru WAV pro wav:FILE.");
+        Console.WriteLine("    DEVICE je název zařízení ALSA, třeba default. PORT je číslo UDP portu.");
+        Console.WriteLine("  NksAudioLink.Server devices");
+        Console.WriteLine("    Vypíše dostupné zvukové karty ALSA.");
         return;
     }
     if (args[0] == "devices")
@@ -14,17 +18,17 @@ try
         foreach (var card in AlsaSink.ListCards()) Console.WriteLine(card);
         return;
     }
-    if (args[0] != "run") throw new ArgumentException("Unknown server command.");
+    if (args[0] != "run") throw new ArgumentException($"Neznámý příkaz „{args[0]}“. Použijte run nebo devices.");
     var config = new ServerConfig();
     for (int i = 1; i < args.Length; i++)
     {
-        if (i + 1 >= args.Length) throw new ArgumentException($"Missing value for {args[i]}.");
+        if (i + 1 >= args.Length) throw new ArgumentException($"Za volbou „{args[i]}“ chybí hodnota.");
         switch (args[i++])
         {
             case "--config": config = ServerConfig.Load(args[i]); break;
             case "--sink": config = config with { Sink = args[i] }; break;
             case "--port": config = config with { Port = int.Parse(args[i]) }; break;
-            default: throw new ArgumentException($"Unknown option: {args[i - 1]}");
+            default: throw new ArgumentException($"Neznámá volba „{args[i - 1]}“. Seznam voleb zobrazí --help.");
         }
     }
     config.Validate();

@@ -36,7 +36,7 @@ public static class VirtualCableRouting
         using var cable = enumerator.GetDevice(cablePlaybackId);
         if (cable.DataFlow != DataFlow.Render || cable.State != DeviceState.Active ||
             !cable.FriendlyName.Contains("CABLE Input", StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("CABLE Input není aktivní výstupní zařízení.");
+            throw new InvalidOperationException("CABLE Input není aktivní výstup. Zapněte jej v\u00A0nastavení zvuku Windows.");
 
         var previous = new Dictionary<Role, string>();
         foreach (var role in Roles)
@@ -67,7 +67,7 @@ public static class VirtualCableRouting
         if (!File.Exists(JournalPath)) return;
         RouteJournal? journal = JsonSerializer.Deserialize<RouteJournal>(File.ReadAllText(JournalPath));
         if (journal is null || string.IsNullOrEmpty(journal.CablePlaybackId) || journal.Previous is null)
-            throw new InvalidDataException("Záloha výchozí zvukovky je poškozená.");
+            throw new InvalidDataException("Zálohu výchozího zvukového zařízení nelze přečíst. Zkontrolujte soubor default-playback-backup.json.");
 
         using var enumerator = new MMDeviceEnumerator();
         using var policy = new PolicyConfig();
@@ -81,9 +81,9 @@ public static class VirtualCableRouting
                 if (current.ID == journal.CablePlaybackId && originalId != journal.CablePlaybackId)
                     policy.SetDefaultEndpoint(originalId, role);
             }
-            catch (Exception ex) { errors.Add(new InvalidOperationException($"Obnova role {role} selhala.", ex)); }
+            catch (Exception ex) { errors.Add(new InvalidOperationException($"Výchozí výstup pro {role} nelze obnovit. Zkontrolujte nastavení zvuku Windows.", ex)); }
         }
-        if (errors.Count > 0) throw new AggregateException("Výchozí zvukovku se nepodařilo zcela obnovit.", errors);
+        if (errors.Count > 0) throw new AggregateException("Původní výchozí výstup nelze úplně obnovit. Zkontrolujte nastavení zvuku Windows.", errors);
         File.Delete(JournalPath);
     }
 
@@ -122,9 +122,9 @@ public static class VirtualCableRouting
         public PolicyConfig()
         {
             var type = Type.GetTypeFromCLSID(new Guid("870AF99C-171D-4F9E-AF0D-E63DF40C2BC9"))
-                ?? throw new InvalidOperationException("Windows PolicyConfig není dostupný.");
+                ?? throw new InvalidOperationException("Windows nedovoluje změnit výchozí zvukový výstup. Zkontrolujte nastavení zvuku.");
             _native = (IPolicyConfig)(Activator.CreateInstance(type)
-                ?? throw new InvalidOperationException("Windows PolicyConfig nelze vytvořit."));
+                ?? throw new InvalidOperationException("Windows nedovoluje změnit výchozí zvukový výstup. Zkontrolujte nastavení zvuku."));
         }
 
         public void SetDefaultEndpoint(string deviceId, Role role)

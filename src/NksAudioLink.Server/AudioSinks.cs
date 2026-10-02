@@ -33,9 +33,9 @@ public sealed class WavSink : IAudioSink
     public void Write(ReadOnlySpan<short> samples)
     {
         if (samples.Length != Protocol.SamplesPerFrame * Protocol.Channels)
-            throw new ArgumentException("Expected one 5 ms frame.", nameof(samples));
+            throw new ArgumentException("Očekává se jeden zvukový rámec o délce 5\u00A0ms.", nameof(samples));
         if (_audioBytes > uint.MaxValue - 36L - _buffer.Length)
-            throw new IOException("WAV reached the RIFF size limit.");
+            throw new IOException("Soubor WAV dosáhl limitu formátu RIFF (4\u00A0GiB). Spusťte nový záznam do jiného souboru.");
         for (int i = 0; i < samples.Length; i++)
             BinaryPrimitives.WriteInt16LittleEndian(_buffer.AsSpan(i * 2), samples[i]);
         _stream.Write(_buffer);

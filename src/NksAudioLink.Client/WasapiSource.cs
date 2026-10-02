@@ -32,7 +32,7 @@ public sealed class WasapiSource : IAudioSource
         if (_device.DataFlow != flow)
         {
             _device.Dispose();
-            throw new ArgumentException("The endpoint has the wrong direction.", nameof(deviceId));
+            throw new ArgumentException("Vybrané zařízení nelze použít v\u00A0tomto režimu. Zvolte jiné zařízení.", nameof(deviceId));
         }
         var builder = new WasapiRecorderBuilder()
             .WithDevice(_device)
@@ -48,14 +48,14 @@ public sealed class WasapiSource : IAudioSource
             string format = _recorder.WaveFormat.ToString();
             _recorder.Dispose();
             _device.Dispose();
-            throw new NotSupportedException($"Unexpected WASAPI capture format: {format}");
+            throw new NotSupportedException($"Zvukové zařízení neposkytuje požadovaný formát 48\u00A0kHz, 16\u00A0bitů, stereo ({format}). Zvolte jiné zařízení.");
         }
         _recorder.DataAvailable += (buffer, _, _, _) => Queue.Write(buffer);
         _recorder.RecordingStopped += (_, stopped) =>
         {
             if (_stopping) return;
             Queue.Clear();
-            CaptureError?.Invoke(stopped.Exception ?? new IOException("WASAPI capture stopped unexpectedly."));
+            CaptureError?.Invoke(stopped.Exception ?? new IOException("Zachytávání zvuku se přerušilo. Zkontrolujte zvukové zařízení."));
         };
     }
 

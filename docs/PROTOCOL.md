@@ -1,9 +1,9 @@
-# Protokol — návrh v1
+# Přenosový protokol NKS AudioLink v1
 
 UDP, výchozí port **7355**. Všechna vícebajtová čísla jsou **little-endian**.
-Jeden datagram = jeden paket. Max velikost paketu < 1400 B (bez fragmentace).
+Jeden datagram obsahuje jeden paket. Paket má méně než 1 400 B, aby se v běžné síti nemusel dělit.
 
-## Společná hlavička (16 B)
+## Společná hlavička (16 B)
 
 | Offset | Velikost | Pole | Poznámka |
 |---|---|---|---|
@@ -12,18 +12,18 @@ Jeden datagram = jeden paket. Max velikost paketu < 1400 B (bez fragmentace).
 | 5 | 1 | `type` | viz tabulka typů |
 | 6 | 2 | `flags` | bitové příznaky, viz níže |
 | 8 | 4 | `session` | náhodné číslo relace, volí klient při `HELLO` |
-| 12 | 4 | `seq` | pořadové číslo paketu v relaci (pro statistiku ztrát) |
+| 12 | 4 | `seq` | pořadové číslo paketu v relaci (pro statistiku ztrát) |
 
-Pokud je nastaven příznak `AUTH`, na konci paketu je **16 B tag** = prvních 16 B
-HMAC-SHA256(psk, celý paket bez tagu). Server s nastaveným klíčem pakety bez platného tagu
-tiše zahodí. Porovnávat v konstantním čase.
+Příznak `AUTH` znamená, že paket končí **16 B ověřovací značkou**: prvními 16 B výsledku
+HMAC-SHA256(psk, celý paket bez značky). Server s nastaveným klíčem paket bez platné značky
+tiše zahodí. Značky porovnává v konstantním čase.
 
 ### Příznaky
 | Bit | Název | Význam |
 |---|---|---|
-| 0 | `AUTH` | paket nese HMAC tag |
+| 0 | `AUTH` | paket nese ověřovací značku HMAC |
 | 1 | `SILENT` | (AUDIO) rámec je ticho, data se neposílají |
-| 2 | `TAKEOVER` | (HELLO) převzít server, i když má jiného aktivního klienta |
+| 2 | `TAKEOVER` | (HELLO) převzít server, i když má jiného aktivního klienta |
 
 ## Typy paketů
 
@@ -48,37 +48,37 @@ tiše zahodí. Porovnávat v konstantním čase.
 | 1 | `frameMs` (5) |
 | 2 | `targetLatencyMs` (např. 30) |
 | 1 | délka jména N |
-| N | jméno klienta UTF-8 (max 64 B) |
+| N | jméno klienta UTF-8 (max 64 B) |
 
-Klient posílá `HELLO` při startu a pak každé 2 s jako keepalive. Server odpoví `STATS`
+Klient posílá `HELLO` při startu a pak každé 2 s pro udržení relace. Server odpoví `STATS`
 (přijato) nebo `REJECT`.
 
 ### AUDIO (tělo)
 | Velikost | Pole |
 |---|---|
-| 8 | `sampleIndex` — index prvního vzorku rámce od začátku relace |
-| 2 | `frameCount` — počet vzorků (na kanál) v rámci |
+| 8 | `sampleIndex`: index prvního vzorku rámce od začátku relace |
+| 2 | `frameCount`: počet vzorků na kanál v rámci |
 | 0 nebo frameCount × channels × 2 | PCM s16le prokládaně; při `SILENT` prázdné |
 
 Server zařazuje rámce podle `sampleIndex`. Rámec se starším indexem, než je aktuální pozice
-přehrávání, zahodí (počítá `late`). Mezeru v indexech po uplynutí času zaplní tichem
+přehrávání, zahodí (počítá `late`). Mezeru v indexech po uplynutí času zaplní tichem
 (počítá `lost`).
 
 ### BYE
-Bez těla. Server okamžitě ukončí relaci a po `idleReleaseSec` uvolní zařízení.
+Bez těla. Server okamžitě ukončí relaci a po `idleReleaseSec` uvolní zařízení.
 
 ### STATS (tělo, server → klient, 1×/s)
 | Velikost | Pole |
 |---|---|
 | 1 | `accepted` (1/0) |
-| 2 | `bufferMs` — aktuální zaplnění jitter bufferu |
-| 2 | `sinkDelayMs` — hloubka výstupu (ALSA `snd_pcm_delay`) |
+| 2 | `bufferMs`: aktuální zaplnění vyrovnávací fronty |
+| 2 | `sinkDelayMs`: zpoždění výstupu (ALSA `snd_pcm_delay`) |
 | 4 | `underruns` |
 | 4 | `overruns` |
 | 4 | `lost` |
 | 4 | `late` |
-| 4 | `ratioPpm` — aktuální korekce driftu v ppm (signed) |
-| 8 | `echoTicks` — poslední `PING` timestamp klienta (pro RTT), jinak 0 |
+| 4 | `ratioPpm`: aktuální korekce rozdílných hodin v ppm, číslo se znaménkem |
+| 8 | `echoTicks`: časová značka posledního `PING` od klienta pro výpočet RTT; jinak 0 |
 
 ### DISCOVER / DISCOVER_REPLY
 `DISCOVER` bez těla, posílá se na `255.255.255.255:7355` **a** na broadcast každého
@@ -91,9 +91,9 @@ aktivního IPv4 rozhraní (PC má víc adaptérů).
 
 ### REJECT
 `reason(1)`: 1 = busy, 2 = nepodporovaný formát, 3 = nepovolená adresa, 4 = chybná autentizace
-(posílat jen pokud to nastavení serveru dovolí — jinak tiše zahodit).
+(posílat jen pokud to nastavení serveru dovolí, jinak tiše zahodit).
 
-## Chování v čase
+## Chování v čase
 
 ```
 klient                          server
@@ -107,4 +107,4 @@ klient                          server
   │ BYE ─────────────────────────▶ │ konec relace
 ```
 
-Bez paketů od klienta po dobu 3 s server relaci ukončí sám.
+Pokud klient 3 s nepošle žádný paket, server relaci ukončí sám.

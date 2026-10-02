@@ -12,10 +12,14 @@ try
 {
     if (args.Length == 0 || args[0] is "help" or "--help")
     {
-        Console.WriteLine("nksaudio devices");
-        Console.WriteLine("nksaudio discover [--port PORT] [--config FILE]");
-        Console.WriteLine("nksaudio send --server HOST [--mode loopback|capture] [--device ID] [--seconds N] [--gain 0..4] [--takeover true|false] [--config FILE]");
-        Console.WriteLine("nksaudio test-tone --server HOST [--port PORT] [--seconds N] [--config FILE]");
+        Console.WriteLine("Příkazy NKS AudioLink:");
+        Console.WriteLine("NksAudioLink.Cli.exe devices");
+        Console.WriteLine("NksAudioLink.Cli.exe discover [--port PORT] [--config FILE]");
+        Console.WriteLine("NksAudioLink.Cli.exe send --server HOST [--mode loopback|capture] [--device ID] [--seconds N] [--gain 0..4] [--takeover true|false] [--config FILE]");
+        Console.WriteLine("NksAudioLink.Cli.exe test-tone --server HOST [--port PORT] [--seconds N] [--config FILE]");
+        Console.WriteLine("devices: vypíše zvuková zařízení; discover: najde server v\u00A0místní síti.");
+        Console.WriteLine("send: odesílá zvuk; test-tone: pošle zkušební tón 440\u00A0Hz.");
+        Console.WriteLine("--gain 1 ponechá hlasitost beze změny; vyšší hodnota může zvuk zkreslit.");
         return;
     }
     if (args[0] == "devices")
@@ -29,12 +33,12 @@ try
         var discoverConfig = new ClientConfig();
         for (int i = 1; i < args.Length; i++)
         {
-            if (i + 1 >= args.Length) throw new ArgumentException($"Missing value for {args[i]}.");
+            if (i + 1 >= args.Length) throw new ArgumentException($"Za {args[i]} chybí hodnota.");
             switch (args[i++])
             {
                 case "--port": discoverConfig = discoverConfig with { Port = int.Parse(args[i]) }; break;
                 case "--config": discoverConfig = ClientConfig.Load(args[i]); break;
-                default: throw new ArgumentException($"Unknown option: {args[i - 1]}");
+                default: throw new ArgumentException($"Neznámá volba: {args[i - 1]}");
             }
         }
         discoverConfig.Validate();
@@ -58,7 +62,7 @@ try
             }
         }
         await Task.WhenAll(probes);
-        if (probes.Count == 0) Console.WriteLine("No active IPv4 network adapter was found.");
+        if (probes.Count == 0) Console.WriteLine("Není dostupné žádné aktivní síťové rozhraní IPv4. Zkontrolujte připojení k\u00A0síti.");
         return;
 
         async Task ProbeAsync(IPAddress local, IPAddress directedBroadcast)
@@ -94,7 +98,7 @@ try
         string? deviceId = null;
         for (int i = 1; i < args.Length; i++)
         {
-            if (i + 1 >= args.Length) throw new ArgumentException($"Missing value for {args[i]}.");
+            if (i + 1 >= args.Length) throw new ArgumentException($"Za {args[i]} chybí hodnota.");
             switch (args[i++])
             {
                 case "--server": sendConfig = sendConfig with { Server = args[i] }; break;
@@ -104,9 +108,9 @@ try
                 case "--seconds": sendSeconds = int.Parse(args[i]); break;
                 case "--takeover": takeover = bool.Parse(args[i]); break;
                 case "--device": deviceId = args[i]; break;
-                case "--mode": loopback = args[i] switch { "loopback" => true, "capture" => false, _ => throw new ArgumentException("Mode must be loopback or capture.") }; break;
+                case "--mode": loopback = args[i] switch { "loopback" => true, "capture" => false, _ => throw new ArgumentException("Pro --mode zadejte loopback nebo capture.") }; break;
                 case "--config": sendConfig = ClientConfig.Load(args[i]); break;
-                default: throw new ArgumentException($"Unknown option: {args[i - 1]}");
+                default: throw new ArgumentException($"Neznámá volba: {args[i - 1]}");
             }
         }
         using var stop = new CancellationTokenSource();
@@ -119,12 +123,12 @@ try
         await client.RunAsync(deviceId, loopback, stop.Token, takeover);
         return;
     }
-    if (args[0] != "test-tone") throw new ArgumentException("Unknown client command.");
+    if (args[0] != "test-tone") throw new ArgumentException("Neznámý příkaz. Dostupné příkazy zobrazíte pomocí NksAudioLink.Cli.exe --help.");
     var config = new ClientConfig();
     int seconds = 5;
     for (int i = 1; i < args.Length; i++)
     {
-        if (i + 1 >= args.Length) throw new ArgumentException($"Missing value for {args[i]}.");
+        if (i + 1 >= args.Length) throw new ArgumentException($"Za {args[i]} chybí hodnota.");
         switch (args[i++])
         {
             case "--server": config = config with { Server = args[i] }; break;
@@ -132,7 +136,7 @@ try
             case "--seconds": seconds = int.Parse(args[i]); break;
             case "--gain": config = config with { Gain = double.Parse(args[i], System.Globalization.CultureInfo.InvariantCulture) }; break;
             case "--config": config = ClientConfig.Load(args[i]); break;
-            default: throw new ArgumentException($"Unknown option: {args[i - 1]}");
+            default: throw new ArgumentException($"Neznámá volba: {args[i - 1]}");
         }
     }
     config.Validate();
@@ -162,7 +166,7 @@ try
     {
         var response = await udp.ReceiveAsync(handshake.Token);
         if (!Protocol.TryRead(response.Buffer, key, out var header, out var responseBody) || header.Session != session) continue;
-        if (header.Type == PacketType.Reject) throw new InvalidOperationException($"Server rejected session: {(responseBody.IsEmpty ? 0 : responseBody[0])}");
+        if (header.Type == PacketType.Reject) throw new InvalidOperationException($"Server odmítl připojení (kód {(responseBody.IsEmpty ? 0 : responseBody[0])}). Zkontrolujte sdílený klíč a\u00A0obsazenost serveru.");
         if (header.Type == PacketType.Stats && StatsMessage.TryRead(responseBody, out var stats)) accepted = stats.Accepted;
     }
 
@@ -189,13 +193,13 @@ try
                         Console.WriteLine($"stats buffer={stats.BufferMs}ms sink={stats.SinkDelayMs}ms underruns={stats.Underruns} overruns={stats.Overruns} lost={stats.Lost} late={stats.Late} ratio={stats.RatioPpm}ppm sendGapMax={largestSendGapMs:F1}ms gaps>10={sendGapsOver10Ms}");
                 }
                 else if (header.Type == PacketType.Reject)
-                    Console.Error.WriteLine("Server rejected the active session.");
+                    Console.Error.WriteLine("Server ukončil aktivní připojení. Zkontrolujte, zda se nepřipojil jiný klient.");
             }
         }
         catch (OperationCanceledException) { }
     }
 
-    Console.WriteLine($"Streaming 440 Hz to {endpoint} for {seconds} s");
+    Console.WriteLine($"Odesílám tón 440\u00A0Hz na {endpoint} po dobu {seconds}\u00A0s.");
     int frames = seconds * 1000 / Protocol.FrameMs;
     int trailingSilentFrames = config.TargetLatencyMs / Protocol.FrameMs + 2;
     var senderDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -255,7 +259,7 @@ try
     await Send(PacketType.Bye, PacketFlags.None, ReadOnlyMemory<byte>.Empty);
     Console.WriteLine($"final stats: received={statsReceived} buffer={latestStats.BufferMs}ms sink={latestStats.SinkDelayMs}ms underruns={latestStats.Underruns} overruns={latestStats.Overruns} lost={latestStats.Lost} late={latestStats.Late} ratio={latestStats.RatioPpm}ppm");
     Console.WriteLine($"send timing: largest gap={largestSendGapMs:F1}ms gaps>10ms={sendGapsOver10Ms}");
-    Console.WriteLine("Done");
+    Console.WriteLine("Hotovo.");
 }
 catch (Exception ex)
 {

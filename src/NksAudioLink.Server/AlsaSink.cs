@@ -9,14 +9,15 @@ public sealed class AlsaSink : IAudioSink
 
     public AlsaSink(string device, int latencyMs = 20)
     {
-        if (!OperatingSystem.IsLinux()) throw new PlatformNotSupportedException("ALSA sink requires Linux.");
-        if (latencyMs is < 5 or > 200) throw new ArgumentOutOfRangeException(nameof(latencyMs));
+        if (!OperatingSystem.IsLinux()) throw new PlatformNotSupportedException("Výstup ALSA je dostupný jen v Linuxu.");
+        if (latencyMs is < 5 or > 200)
+            throw new ArgumentOutOfRangeException(nameof(latencyMs), "Latence výstupu musí být 5 až 200\u00A0ms.");
         int result = snd_pcm_open(out _pcm, device, 0, 0);
         if (result < 0) throw Error("open", result);
         try
         {
             int format = snd_pcm_format_value("S16_LE");
-            if (format < 0) throw new InvalidOperationException("ALSA does not support S16_LE.");
+            if (format < 0) throw new InvalidOperationException("Knihovna ALSA nezná formát S16_LE.");
             result = snd_pcm_set_params(_pcm, format, 3, Protocol.Channels, Protocol.SampleRate, 1, (uint)(latencyMs * 1000));
             if (result < 0) throw Error("set_params", result);
         }
@@ -40,8 +41,8 @@ public sealed class AlsaSink : IAudioSink
     public unsafe void Write(ReadOnlySpan<short> samples)
     {
         if (samples.Length != Protocol.SamplesPerFrame * Protocol.Channels)
-            throw new ArgumentException("Expected one 5 ms frame.", nameof(samples));
-        if (_pcm == IntPtr.Zero) throw new ObjectDisposedException(nameof(AlsaSink));
+            throw new ArgumentException("Očekává se jeden zvukový rámec o délce 5\u00A0ms.", nameof(samples));
+        if (_pcm == IntPtr.Zero) throw new ObjectDisposedException(nameof(AlsaSink), "Zařízení ALSA je zavřené.");
         fixed (short* pcm = samples)
         {
             int written = 0;
@@ -55,7 +56,7 @@ public sealed class AlsaSink : IAudioSink
                     if (recovered < 0) throw Error("writei/recover", recovered);
                     continue;
                 }
-                if (result == 0) throw new IOException("ALSA write made no progress.");
+                if (result == 0) throw new IOException("Zápis do zařízení ALSA nepřenesl žádné vzorky.");
                 written += checked((int)result);
             }
         }
@@ -72,7 +73,7 @@ public sealed class AlsaSink : IAudioSink
 
     public static IEnumerable<string> ListCards()
     {
-        if (!OperatingSystem.IsLinux()) throw new PlatformNotSupportedException("ALSA devices require Linux.");
+        if (!OperatingSystem.IsLinux()) throw new PlatformNotSupportedException("Výpis zařízení ALSA je dostupný jen v Linuxu.");
         int card = -1;
         while (true)
         {
@@ -87,7 +88,7 @@ public sealed class AlsaSink : IAudioSink
     }
 
     private static Exception Error(string operation, long code) =>
-        new IOException($"ALSA {operation}: {Marshal.PtrToStringAnsi(snd_strerror((int)code))} ({code})");
+        new IOException($"Operace ALSA {operation} selhala: {Marshal.PtrToStringAnsi(snd_strerror((int)code))} (kód {code}).");
 
     [DllImport("libasound.so.2", CallingConvention = CallingConvention.Cdecl)]
     private static extern int snd_pcm_open(out IntPtr pcm, [MarshalAs(UnmanagedType.LPUTF8Str)] string name, int stream, int mode);

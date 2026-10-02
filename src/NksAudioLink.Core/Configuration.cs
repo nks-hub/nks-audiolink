@@ -15,7 +15,7 @@ public sealed record ServerConfig
     public int TargetLatencyMs { get; init; } = 30;
 
     public static ServerConfig Load(string path) =>
-        JsonSerializer.Deserialize<ServerConfig>(File.ReadAllText(path), JsonOptions()) ?? throw new InvalidDataException("Empty server configuration.");
+        JsonSerializer.Deserialize<ServerConfig>(File.ReadAllText(path), JsonOptions()) ?? throw new InvalidDataException("Soubor s\u00A0nastavením serveru je prázdný. Doplňte platné nastavení.");
 
     public void Validate()
     {
@@ -23,7 +23,7 @@ public sealed record ServerConfig
             string.IsNullOrWhiteSpace(Sink) || System.Text.Encoding.UTF8.GetByteCount(Sink) > 128 ||
             AllowCidrs is null || AllowCidrs.Length == 0 ||
             IdleReleaseSec is < 1 or > 300 || TargetLatencyMs is < 10 or > 200 || TargetLatencyMs % 5 != 0)
-            throw new InvalidDataException("Invalid server configuration.");
+            throw new InvalidDataException("Nastavení serveru není platné. Zkontrolujte port, název, výstup, povolené adresy a\u00A0zpoždění.");
         foreach (string cidr in AllowCidrs) _ = CidrRange.Parse(cidr);
         _ = GetPsk();
     }
@@ -33,8 +33,8 @@ public sealed record ServerConfig
         if (string.IsNullOrEmpty(PskBase64)) return null;
         byte[] key;
         try { key = Convert.FromBase64String(PskBase64); }
-        catch (FormatException ex) { throw new InvalidDataException("PSK must be Base64.", ex); }
-        if (key.Length < 16) throw new InvalidDataException("PSK must contain at least 16 random bytes.");
+        catch (FormatException ex) { throw new InvalidDataException("Sdílený klíč musí být ve formátu Base64. Zkontrolujte zadaný text.", ex); }
+        if (key.Length < 16) throw new InvalidDataException("Sdílený klíč musí mít alespoň 16 náhodných bajtů.");
         return key;
     }
 
@@ -50,14 +50,14 @@ public sealed record ClientConfig
     public string? PskBase64 { get; init; }
 
     public static ClientConfig Load(string path) =>
-        JsonSerializer.Deserialize<ClientConfig>(File.ReadAllText(path), ServerConfig.JsonOptions()) ?? throw new InvalidDataException("Empty client configuration.");
+        JsonSerializer.Deserialize<ClientConfig>(File.ReadAllText(path), ServerConfig.JsonOptions()) ?? throw new InvalidDataException("Soubor s\u00A0nastavením klienta je prázdný. Doplňte platné nastavení.");
 
     public void Validate()
     {
         if (string.IsNullOrWhiteSpace(Server) || Port is < 1 or > 65535 ||
             TargetLatencyMs is < 10 or > 200 || TargetLatencyMs % 5 != 0 ||
             !double.IsFinite(Gain) || Gain is < 0 or > 4)
-            throw new InvalidDataException("Invalid client configuration.");
+            throw new InvalidDataException("Nastavení klienta není platné. Zkontrolujte adresu serveru, port, zesílení a\u00A0rezervu zvuku.");
         if (PskBase64 is not null)
             _ = (new ServerConfig { PskBase64 = PskBase64 }).GetPsk();
     }
@@ -70,7 +70,7 @@ public readonly record struct CidrRange(IPAddress Network, int PrefixBits)
         string[] parts = text.Split('/');
         if (parts.Length != 2 || !IPAddress.TryParse(parts[0], out var address) ||
             !int.TryParse(parts[1], out int bits) || bits < 0 || bits > address.GetAddressBytes().Length * 8)
-            throw new InvalidDataException($"Invalid CIDR range: {text}");
+            throw new InvalidDataException($"Neplatný rozsah adres CIDR: {text}. Zkontrolujte zápis adresy a\u00A0délku prefixu.");
         return new CidrRange(address, bits);
     }
 

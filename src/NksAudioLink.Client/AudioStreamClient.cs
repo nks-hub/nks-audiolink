@@ -25,7 +25,7 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
     private double _captureLatencyMs = 10;
     public double CaptureLatencyMs => Volatile.Read(ref _captureLatencyMs);
 
-    private sealed class CaptureDeviceException(Exception inner) : Exception("Zvukové zařízení přestalo dodávat data.", inner);
+    private sealed class CaptureDeviceException(Exception inner) : Exception("Zvukové zařízení přestalo dodávat data. Zkontrolujte jeho připojení.", inner);
 
     public async Task RunAsync(string? deviceId, bool loopback, CancellationToken cancellationToken, bool takeover = false)
     {

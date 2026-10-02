@@ -9,11 +9,11 @@ public sealed class ServerRejectedException : Exception
 
     public ServerRejectedException(RejectReason reason) : base(reason switch
     {
-        RejectReason.Busy => "Server už používá jiný klient.",
-        RejectReason.UnsupportedFormat => "Server nepodporuje formát přenosu.",
-        RejectReason.AddressDenied => "Server odmítl adresu tohoto počítače.",
-        RejectReason.BadAuthentication => "Server odmítl sdílený klíč.",
-        _ => "Server odmítl připojení."
+        RejectReason.Busy => "Server už používá jiný klient. Odpojte jej a\u00A0připojte se znovu.",
+        RejectReason.UnsupportedFormat => "Server nepodporuje tento formát zvuku. Zkontrolujte verzi serveru.",
+        RejectReason.AddressDenied => "Server odmítl adresu tohoto počítače. Zkontrolujte povolené adresy na serveru.",
+        RejectReason.BadAuthentication => "Server odmítl sdílený klíč. Zkontrolujte klíč na obou stranách.",
+        _ => "Server odmítl připojení. Zkontrolujte jeho nastavení."
     })
     {
         Reason = reason;
