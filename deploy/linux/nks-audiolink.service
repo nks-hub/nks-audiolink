@@ -9,6 +9,8 @@ User=nks-audiolink
 Group=nks-audiolink
 SupplementaryGroups=audio
 WorkingDirectory=/opt/nks-audiolink
+Environment=DOTNET_SYSTEM_NET_SOCKETS_INLINE_COMPLETIONS=1
+Environment=DOTNET_SYSTEM_NET_SOCKETS_THREAD_COUNT=1
 ExecStart=/opt/nks-audiolink/NksAudioLink.Server run --config /etc/nks-audiolink/server.json
 Restart=on-failure
 RestartSec=2

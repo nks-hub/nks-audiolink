@@ -2,6 +2,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\NksAudioLink.Core\NksAudioLink.Core.csproj" />
+    <RuntimeHostConfigurationOption Include="System.Threading.ThreadPool.UnfairSemaphoreSpinLimit"
+                                    Value="0"
+                                    Condition="$([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('linux-'))" />
   </ItemGroup>
 
   <PropertyGroup>
