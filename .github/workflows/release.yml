@@ -16,7 +16,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '9.0.x'
+          dotnet-version: '9.0.318'
       - name: Test Windows solution
         run: dotnet test NksAudioLink.sln --configuration Release
       - name: Publish Windows app
@@ -30,6 +30,9 @@ jobs:
           Copy-Item -Path publish/cli/* -Destination publish/windows/cli -Recurse -Force
           Copy-Item README.md, TODO.md, CHANGELOG.md, THIRD_PARTY_NOTICES.md -Destination publish/windows
           Copy-Item docs -Destination publish/windows/docs -Recurse
+          New-Item -ItemType Directory -Path publish/windows/licenses -Force | Out-Null
+          Copy-Item deploy/licenses/dotnet-coreapp-win-x64 -Destination publish/windows/licenses/dotnet-coreapp-win-x64 -Recurse
+          Copy-Item deploy/licenses/dotnet-windowsdesktop-win-x64 -Destination publish/windows/licenses/dotnet-windowsdesktop-win-x64 -Recurse
           Compress-Archive -Path publish/windows/* -DestinationPath nks-audiolink-windows-x64.zip -CompressionLevel Optimal -Force
       - uses: actions/upload-artifact@v4
         with:
@@ -43,7 +46,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '9.0.x'
+          dotnet-version: '9.0.318'
       - name: Test portable code
         run: dotnet test tests/NksAudioLink.Tests/NksAudioLink.Tests.csproj --configuration Release
       - name: Publish Linux server
@@ -52,8 +55,11 @@ jobs:
         run: |
           cp README.md TODO.md CHANGELOG.md THIRD_PARTY_NOTICES.md publish/linux/
           cp -R docs publish/linux/docs
+          mkdir -p publish/linux/licenses
+          cp -R deploy/licenses/dotnet-coreapp-linux-x64 publish/linux/licenses/
           mkdir -p publish/linux/deploy
           cp -R deploy/linux publish/linux/deploy/linux
+          chmod +x publish/linux/NksAudioLink.Server publish/linux/deploy/linux/install.sh
           tar -czf nks-audiolink-linux-x64.tar.gz -C publish/linux .
       - uses: actions/upload-artifact@v4
         with:
