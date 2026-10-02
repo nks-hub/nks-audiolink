@@ -10,7 +10,9 @@ Plánovaný režim virtuální zvukovky používá samostatně instalovaný, pod
 
 ## Stav
 
-Existuje kostra řešení a první část Core: čtení/zápis UDP paketů, HMAC a jitter buffer. Přenos zvuku, GUI ani nasazení zatím nejsou dokončené. Průběh a kritéria ověření jsou v [TODO.md](TODO.md). Žádné binárky ovladače ani konfigurace konkrétní instalace nejsou součástí repozitáře.
+Fáze 0 a 1 jsou hotové: řešení se sestaví na Windows i Linuxu; Core obsahuje UDP protokol, HMAC, jitter buffer, resampler a konfiguraci. Přenos zvuku, GUI ani nasazení zatím nejsou dokončené. Průběh a kritéria ověření jsou v [TODO.md](TODO.md). Žádné binárky ovladače ani konfigurace konkrétní instalace nejsou součástí repozitáře.
+
+Lokálně prošlo 27 testů a pokrytí řádků Core je 85,42 % (`dotnet test tests/NksAudioLink.Tests --collect:"XPlat Code Coverage"`).
 
 ## Sestavení
 
