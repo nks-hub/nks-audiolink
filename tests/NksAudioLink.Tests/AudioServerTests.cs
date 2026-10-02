@@ -40,9 +40,11 @@ public class AudioServerTests
             Assert.Equal(2, sinks.Count);
             Assert.True(sinks[0].Disposed);
 
+            // Periodic STATS can precede the reply to the next command.
+            await Task.Delay(1100);
             await Send(first, PacketType.Bye, 11, []);
             await Send(second, PacketType.Ping, 22, new byte[8]);
-            Assert.Equal(PacketType.Pong, (await Receive(second)).Type);
+            Assert.Equal(PacketType.Pong, (await Receive(second, PacketType.Pong)).Type);
             await Send(second, PacketType.Bye, 22, []);
             Assert.False(sinks[1].Disposed);
             await Eventually(() => sinks[1].Disposed, 150);
@@ -149,7 +151,7 @@ public class AudioServerTests
             Assert.Equal(PacketType.Stats, (await Receive(client)).Type);
             await Send(client, PacketType.Bye, 11, []);
             await Send(client, PacketType.Hello, 12, HelloBody());
-            Assert.Equal(PacketType.Stats, (await Receive(client)).Type);
+            Assert.Equal(PacketType.Stats, (await Receive(client, PacketType.Stats, 12)).Type);
             Assert.Equal(2, opens);
         }
         finally
@@ -206,12 +208,21 @@ public class AudioServerTests
         await udp.SendAsync(packet.AsMemory(0, length));
     }
 
-    private static async Task<(PacketType Type, byte[] Body)> Receive(UdpClient udp)
+    private static async Task<(PacketType Type, byte[] Body)> Receive(UdpClient udp, PacketType? expected = null, uint? session = null)
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-        var packet = await udp.ReceiveAsync(timeout.Token);
-        Assert.True(Protocol.TryRead(packet.Buffer, [], out var header, out var body));
-        return (header.Type, body.ToArray());
+        while (true)
+        {
+            var packet = await udp.ReceiveAsync(timeout.Token);
+            Assert.True(Protocol.TryRead(packet.Buffer, [], out var header, out var body));
+            if (header.Type == PacketType.Stats &&
+                ((expected is not null && expected != PacketType.Stats) || (session is not null && header.Session != session)))
+            {
+                Assert.True(StatsMessage.TryRead(body, out var stats) && stats.Accepted);
+                continue;
+            }
+            return (header.Type, body.ToArray());
+        }
     }
 
     private static async Task ExpectNoPacket(UdpClient udp)
