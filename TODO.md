@@ -4,7 +4,7 @@ Stav se aktualizuje podle ověřených výsledků. Zaškrtnutí fáze vyžaduje 
 
 - [x] 0. Kostra řešení, lokální build/test, soukromý GitHub repozitář a zelené CI. Ověřeno 2026-10-02: CI Windows i Linux uspělo.
 - [x] 1. Core: UDP protokol, HMAC, jitter buffer, korekce driftu a testy. Ověřeno 2026-10-02: 27 testů, pokrytí řádků Core 85,42 %; simulace driftu ±200 ppm po 10 minut.
-- [ ] 2. UDP server a sinky WAV/null; test tónu přes síť a kontrola 440 Hz.
+- [x] 2. UDP server a sinky WAV/null; test tónu přes síť a kontrola 440 Hz. Ověřeno 2026-10-02 mezi Windows a Linux x86_64: WAV 5,095 s, RMS 8 484, dominantní 440 Hz, 0 přetečení.
 - [ ] 3. ALSA sink, systemd nasazení a desetiminutový test na cílovém Linuxu.
 - [ ] 4. Windows WASAPI klient, tichý tok a ověření skutečného zvuku.
 - [ ] 5. Změřit a zapsat latenci; cílově pod 100 ms.
