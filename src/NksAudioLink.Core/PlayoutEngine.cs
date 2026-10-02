@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Runtime.InteropServices;
 
 namespace NksAudioLink.Core;
 
@@ -34,8 +35,11 @@ public sealed class PlayoutEngine
             int needed = (int)Math.Ceiling(Protocol.SamplesPerFrame * ratio) + 2;
             while (_resampler.BufferedFrames < needed && _jitter.ReadNext(_frame))
             {
-                for (int i = 0; i < _samples.Length; i++)
-                    _samples[i] = BinaryPrimitives.ReadInt16LittleEndian(_frame.AsSpan(i * 2));
+                if (BitConverter.IsLittleEndian)
+                    MemoryMarshal.Cast<byte, short>(_frame).CopyTo(_samples);
+                else
+                    for (int i = 0; i < _samples.Length; i++)
+                        _samples[i] = BinaryPrimitives.ReadInt16LittleEndian(_frame.AsSpan(i * 2));
                 _resampler.Push(_samples);
             }
             int written = _resampler.Read(destination, ratio);

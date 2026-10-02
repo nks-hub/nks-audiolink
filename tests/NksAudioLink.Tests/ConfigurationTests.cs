@@ -23,6 +23,13 @@ public class ConfigurationTests
     }
 
     [Fact]
+    public void ServerDiscoveryFieldsUseUtf8ByteLimits()
+    {
+        Assert.Throws<InvalidDataException>(() => new ServerConfig { Name = new string('é', 33) }.Validate());
+        Assert.Throws<InvalidDataException>(() => new ServerConfig { Sink = new string('ž', 65) }.Validate());
+    }
+
+    [Fact]
     public void CidrMatchesOnlyItsSubnet()
     {
         var network = CidrRange.Parse("10.20.30.0/24");

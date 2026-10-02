@@ -19,8 +19,9 @@ public sealed record ServerConfig
 
     public void Validate()
     {
-        if (Port is < 1 or > 65535 || string.IsNullOrWhiteSpace(Name) || Name.Length > 64 ||
-            string.IsNullOrWhiteSpace(Sink) || AllowCidrs is null || AllowCidrs.Length == 0 ||
+        if (Port is < 1 or > 65535 || string.IsNullOrWhiteSpace(Name) || System.Text.Encoding.UTF8.GetByteCount(Name) > 64 ||
+            string.IsNullOrWhiteSpace(Sink) || System.Text.Encoding.UTF8.GetByteCount(Sink) > 128 ||
+            AllowCidrs is null || AllowCidrs.Length == 0 ||
             IdleReleaseSec is < 1 or > 300 || TargetLatencyMs is < 10 or > 200 || TargetLatencyMs % 5 != 0)
             throw new InvalidDataException("Invalid server configuration.");
         foreach (string cidr in AllowCidrs) _ = CidrRange.Parse(cidr);

@@ -22,12 +22,12 @@ public sealed class DriftResampler
         if (interleaved.Length % Protocol.Channels != 0) throw new ArgumentException("Stereo samples required.", nameof(interleaved));
         int frames = interleaved.Length / Protocol.Channels;
         if (_count + frames > CapacityFrames) throw new InvalidOperationException("Resampler input buffer is full.");
-        for (int i = 0; i < frames; i++)
-        {
-            int offset = ((_head + _count + i) % CapacityFrames) * Protocol.Channels;
-            _samples[offset] = interleaved[i * Protocol.Channels];
-            _samples[offset + 1] = interleaved[i * Protocol.Channels + 1];
-        }
+        int writeFrame = _head + _count;
+        if (writeFrame >= CapacityFrames) writeFrame -= CapacityFrames;
+        int firstFrames = Math.Min(frames, CapacityFrames - writeFrame);
+        int firstSamples = firstFrames * Protocol.Channels;
+        interleaved[..firstSamples].CopyTo(_samples.AsSpan(writeFrame * Protocol.Channels));
+        interleaved[firstSamples..].CopyTo(_samples);
         _count += frames;
     }
 
@@ -43,8 +43,12 @@ public sealed class DriftResampler
             int first = (int)_phase;
             if (first + 1 >= _count) break;
             double fraction = _phase - first;
-            int a = ((_head + first) % CapacityFrames) * Protocol.Channels;
-            int b = ((_head + first + 1) % CapacityFrames) * Protocol.Channels;
+            int firstFrame = _head + first;
+            if (firstFrame >= CapacityFrames) firstFrame -= CapacityFrames;
+            int nextFrame = firstFrame + 1;
+            if (nextFrame == CapacityFrames) nextFrame = 0;
+            int a = firstFrame * Protocol.Channels;
+            int b = nextFrame * Protocol.Channels;
             int offset = written * Protocol.Channels;
             destination[offset] = Interpolate(_samples[a], _samples[b], fraction);
             destination[offset + 1] = Interpolate(_samples[a + 1], _samples[b + 1], fraction);
