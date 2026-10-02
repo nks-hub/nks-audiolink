@@ -1,47 +1,83 @@
 using System.Buffers.Binary;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using NksAudioLink.Core;
 
 namespace NksAudioLink.Server;
 
-public sealed class AudioServer(ServerConfig config)
+public sealed class AudioServer
 {
+    private readonly ServerConfig config;
+    private readonly Func<string, IAudioSink> _sinkFactory;
+
+    public AudioServer(ServerConfig config, Func<string, IAudioSink>? sinkFactory = null)
+    {
+        this.config = config;
+        _sinkFactory = sinkFactory ?? CreateSink;
+        _key = config.GetPsk();
+        _allow = config.AllowCidrs.Select(CidrRange.Parse).ToArray();
+    }
     private sealed class Session(IPEndPoint endpoint, uint id, PlayoutEngine engine, IAudioSink sink)
     {
         public IPEndPoint Endpoint { get; } = endpoint;
         public uint Id { get; } = id;
         public PlayoutEngine Engine { get; } = engine;
         public IAudioSink Sink { get; } = sink;
-        public DateTime LastPacketUtc { get; set; } = DateTime.UtcNow;
+        public long LastPacketTick { get; set; } = Stopwatch.GetTimestamp();
         public ulong EchoTicks { get; set; }
         public uint Sequence { get; set; }
+        public object SinkGate { get; } = new();
+        public bool Closed { get; set; }
+        public long LastAudioTick { get; set; }
+        public double MaxAudioGapMs { get; set; }
+        public double MaxSinkWriteMs { get; set; }
+        public int SinkDelayMs;
     }
 
     private readonly object _gate = new();
     private Session? _session;
-    private readonly byte[]? _key = config.GetPsk();
-    private readonly CidrRange[] _allow = config.AllowCidrs.Select(CidrRange.Parse).ToArray();
+    private IAudioSink? _idleSink;
+    private long _idleReleaseTick;
+    private readonly byte[]? _key;
+    private readonly CidrRange[] _allow;
 
     public async Task RunAsync(CancellationToken cancellationToken)
     {
         config.Validate();
         using var timerResolution = new TimerResolution();
         using var udp = new UdpClient(new IPEndPoint(IPAddress.Any, config.Port));
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         Console.WriteLine($"Listening UDP {config.Port}; sink {config.Sink}");
-        Task playout = PlayoutLoopAsync(udp, cancellationToken);
+        Task playout = Task.Factory.StartNew(() => PlayoutLoop(stop.Token), CancellationToken.None,
+            TaskCreationOptions.LongRunning, TaskScheduler.Default);
+        Task receive = ReceiveLoopAsync(udp, stop.Token);
+        Task stats = StatsLoopAsync(udp, stop.Token);
         try
         {
-            while (!cancellationToken.IsCancellationRequested)
-            {
-                UdpReceiveResult received = await udp.ReceiveAsync(cancellationToken);
-                await HandleAsync(udp, received, cancellationToken);
-            }
+            await Task.WhenAny(playout, receive, stats);
         }
         finally
         {
-            lock (_gate) CloseSession();
-            try { await playout; } catch (OperationCanceledException) { }
+            stop.Cancel();
+            try { await Task.WhenAll(playout, receive, stats); }
+            finally
+            {
+                lock (_gate)
+                {
+                    CloseSession(releaseNow: true);
+                    ReleaseIdleSink();
+                }
+            }
+        }
+    }
+
+    private async Task ReceiveLoopAsync(UdpClient udp, CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            UdpReceiveResult received = await udp.ReceiveAsync(ct);
+            await HandleAsync(udp, received, ct);
         }
     }
 
@@ -49,7 +85,9 @@ public sealed class AudioServer(ServerConfig config)
     {
         if (!_allow.Any(range => range.Contains(received.RemoteEndPoint.Address))) return;
         if (!Protocol.TryRead(received.Buffer, _key ?? [], out var header, out var bodySpan)) return;
-        byte[] body = bodySpan.ToArray();
+        if ((header.Flags.HasFlag(PacketFlags.Silent) && header.Type != PacketType.Audio) ||
+            (header.Flags.HasFlag(PacketFlags.Takeover) && header.Type != PacketType.Hello)) return;
+        ReadOnlyMemory<byte> body = received.Buffer.AsMemory(Protocol.HeaderSize, bodySpan.Length);
         var remote = received.RemoteEndPoint;
         if (header.Type == PacketType.Discover && body.Length == 0)
         {
@@ -60,13 +98,14 @@ public sealed class AudioServer(ServerConfig config)
         }
         if (header.Type == PacketType.Hello)
         {
-            if (!HelloMessage.TryRead(body, out var hello)) return;
+            if (!HelloMessage.TryRead(body.Span, out var hello)) return;
             if (!hello.IsSupported)
             {
                 await SendAsync(udp, remote, new(PacketType.Reject, PacketFlags.None, header.Session, 0), [(byte)RejectReason.UnsupportedFormat], ct);
                 return;
             }
             bool busy;
+            bool opened = true;
             lock (_gate)
             {
                 busy = _session is not null && (_session.Id != header.Session || !_session.Endpoint.Equals(remote)) &&
@@ -75,62 +114,126 @@ public sealed class AudioServer(ServerConfig config)
                 {
                     if (_session is null || _session.Id != header.Session || !_session.Endpoint.Equals(remote))
                     {
-                        CloseSession();
-                        _session = new Session(remote, header.Session, new PlayoutEngine(hello.TargetLatencyMs), CreateSink(config.Sink));
-                        Console.WriteLine($"Session {header.Session} from {remote}");
+                        // ALSA devices can be exclusive: close the old sink before opening
+                        // the replacement, including on takeover.
+                        try
+                        {
+                            CloseSession(releaseNow: true);
+                            ReleaseIdleSink();
+                            var sink = _sinkFactory(config.Sink);
+                            _session = new Session(remote, header.Session, new PlayoutEngine(hello.TargetLatencyMs), sink);
+                            Console.WriteLine($"Session {header.Session} from {remote}");
+                        }
+                        catch (Exception ex)
+                        {
+                            opened = false;
+                            Console.Error.WriteLine($"Cannot open audio sink: {ex.Message}");
+                        }
                     }
-                    _session.LastPacketUtc = DateTime.UtcNow;
+                    if (opened) _session!.LastPacketTick = Stopwatch.GetTimestamp();
                 }
             }
             if (busy)
                 await SendAsync(udp, remote, new(PacketType.Reject, PacketFlags.None, header.Session, 0), [(byte)RejectReason.Busy], ct);
-            else await SendStatsAsync(udp, ct);
+            else if (opened) await SendStatsAsync(udp, ct);
             return;
         }
         lock (_gate)
         {
             if (_session is null || _session.Id != header.Session || !_session.Endpoint.Equals(remote)) return;
-            if (header.Type == PacketType.Bye && body.Length == 0) { CloseSession(); return; }
+            if (header.Type == PacketType.Bye && body.Length == 0)
+            {
+                _session.LastPacketTick = Stopwatch.GetTimestamp();
+                CloseSession();
+                return;
+            }
             if (header.Type == PacketType.Audio)
             {
                 bool silent = header.Flags.HasFlag(PacketFlags.Silent);
-                if (AudioMessage.TryRead(body, silent, out ulong index, out var pcm))
+                if (AudioMessage.TryRead(body.Span, silent, out ulong index, out var pcm))
                 {
+                    long tick = Stopwatch.GetTimestamp();
+                    if (_session.LastAudioTick != 0)
+                        _session.MaxAudioGapMs = Math.Max(_session.MaxAudioGapMs,
+                            (tick - _session.LastAudioTick) * 1000.0 / Stopwatch.Frequency);
+                    _session.LastAudioTick = tick;
                     _session.Engine.Receive(index, pcm, silent);
-                    _session.LastPacketUtc = DateTime.UtcNow;
+                    _session.LastPacketTick = tick;
                 }
             }
             if (header.Type == PacketType.Ping && body.Length == 8)
             {
-                _session.EchoTicks = BinaryPrimitives.ReadUInt64LittleEndian(body);
-                _session.LastPacketUtc = DateTime.UtcNow;
+                _session.EchoTicks = BinaryPrimitives.ReadUInt64LittleEndian(body.Span);
+                _session.LastPacketTick = Stopwatch.GetTimestamp();
             }
         }
         if (header.Type == PacketType.Ping && body.Length == 8)
-            await SendAsync(udp, remote, new(PacketType.Pong, PacketFlags.None, header.Session, 0), body, ct);
+            await SendAsync(udp, remote, new(PacketType.Pong, PacketFlags.None, header.Session, 0), body.ToArray(), ct);
     }
 
-    private async Task PlayoutLoopAsync(UdpClient udp, CancellationToken ct)
+    private void PlayoutLoop(CancellationToken ct)
     {
-        using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(Protocol.FrameMs));
+        long periodTicks = Stopwatch.Frequency * Protocol.FrameMs / 1000;
+        long deadline = Stopwatch.GetTimestamp() + periodTicks;
         short[] samples = new short[Protocol.SamplesPerFrame * Protocol.Channels];
         int ticks = 0;
-        while (await timer.WaitForNextTickAsync(ct))
+        while (!ct.IsCancellationRequested)
         {
+            long remaining = deadline - Stopwatch.GetTimestamp();
+            while (remaining > 0 && !ct.IsCancellationRequested)
+            {
+                int sleepMs = Math.Max(1, (int)Math.Ceiling(remaining * 1000.0 / Stopwatch.Frequency));
+                Thread.Sleep(sleepMs);
+                remaining = deadline - Stopwatch.GetTimestamp();
+            }
+            if (ct.IsCancellationRequested) break;
+            Session? active;
             lock (_gate)
             {
-                if (_session is not null)
+                long now = Stopwatch.GetTimestamp();
+                if (_session is not null && now - _session.LastPacketTick > 3 * Stopwatch.Frequency)
+                    CloseSession();
+                if (_idleSink is not null && now >= _idleReleaseTick)
+                    ReleaseIdleSink();
+                active = _session;
+            }
+            if (active is not null)
+            {
+                try
                 {
-                    if ((DateTime.UtcNow - _session.LastPacketUtc).TotalSeconds > 3) CloseSession();
-                    else
+                    lock (active.SinkGate)
                     {
-                        _session.Engine.Read(samples);
-                        _session.Sink.Write(samples);
+                        if (!active.Closed)
+                        {
+                            active.Engine.Read(samples);
+                            long beforeWrite = Stopwatch.GetTimestamp();
+                            active.Sink.Write(samples);
+                            active.MaxSinkWriteMs = Math.Max(active.MaxSinkWriteMs,
+                                (Stopwatch.GetTimestamp() - beforeWrite) * 1000.0 / Stopwatch.Frequency);
+                            if ((ticks + 1) % 200 == 0)
+                                Volatile.Write(ref active.SinkDelayMs, active.Sink.DelayMs);
+                        }
                     }
                 }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"Audio sink failed: {ex.Message}");
+                    lock (_gate) if (ReferenceEquals(_session, active)) CloseSession(releaseNow: true);
+                }
             }
-            if (++ticks % 200 == 0) await SendStatsAsync(udp, ct);
+            ticks++;
+            deadline += periodTicks;
+            long afterFrame = Stopwatch.GetTimestamp();
+            if (deadline <= afterFrame)
+                deadline += ((afterFrame - deadline) / periodTicks + 1) * periodTicks;
         }
+    }
+
+    private async Task StatsLoopAsync(UdpClient udp, CancellationToken ct)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+        while (await timer.WaitForNextTickAsync(ct))
+            await SendStatsAsync(udp, ct);
     }
 
     private async Task SendStatsAsync(UdpClient udp, CancellationToken ct)
@@ -142,7 +245,7 @@ public sealed class AudioServer(ServerConfig config)
         {
             if (_session is null) return;
             var stats = _session.Engine.GetStats();
-            new StatsMessage(true, (ushort)stats.BufferMs, (ushort)_session.Sink.DelayMs,
+            new StatsMessage(true, (ushort)stats.BufferMs, (ushort)Volatile.Read(ref _session.SinkDelayMs),
                 (uint)stats.Underruns, (uint)stats.Overruns, (uint)stats.Lost, (uint)stats.Late,
                 stats.RatioPpm, _session.EchoTicks).Write(body);
             endpoint = _session.Endpoint;
@@ -161,15 +264,44 @@ public sealed class AudioServer(ServerConfig config)
     private static IAudioSink CreateSink(string description) => description switch
     {
         "null" => new NullSink(),
+        "alsa" => new AlsaSink("default"),
+        _ when description.StartsWith("alsa:", StringComparison.OrdinalIgnoreCase) => new AlsaSink(description[5..]),
         _ when description.StartsWith("wav:", StringComparison.OrdinalIgnoreCase) => new WavSink(description[4..]),
         _ => throw new ArgumentException($"Unsupported sink: {description}")
     };
 
-    private void CloseSession()
+    private void CloseSession(bool releaseNow = false)
     {
         if (_session is null) return;
-        _session.Sink.Dispose();
-        Console.WriteLine($"Session {_session.Id} closed: {_session.Engine.GetStats()}");
+        Session closing = _session;
+        lock (_session.SinkGate)
+        {
+            if (!_session.Closed)
+            {
+                _session.Closed = true;
+                ReleaseIdleSink();
+                if (releaseNow) DisposeSink(_session.Sink);
+                else
+                {
+                    _idleSink = _session.Sink;
+                    _idleReleaseTick = _session.LastPacketTick + config.IdleReleaseSec * Stopwatch.Frequency;
+                }
+            }
+        }
+        Console.WriteLine($"Session {closing.Id} closed: {closing.Engine.GetStats()}, maxAudioGap={closing.MaxAudioGapMs:F1}ms maxSinkWrite={closing.MaxSinkWriteMs:F1}ms");
         _session = null;
+    }
+
+    private void ReleaseIdleSink()
+    {
+        var sink = _idleSink;
+        _idleSink = null;
+        if (sink is not null) DisposeSink(sink);
+    }
+
+    private static void DisposeSink(IAudioSink sink)
+    {
+        try { sink.Dispose(); }
+        catch (Exception ex) { Console.Error.WriteLine($"Cannot release audio sink: {ex.Message}"); }
     }
 }

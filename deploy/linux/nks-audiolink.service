@@ -1,0 +1,26 @@
+[Unit]
+Description=NKS AudioLink UDP audio receiver
+After=network-online.target sound.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=nks-audiolink
+Group=nks-audiolink
+SupplementaryGroups=audio
+WorkingDirectory=/opt/nks-audiolink
+ExecStart=/opt/nks-audiolink/NksAudioLink.Server run --config /etc/nks-audiolink/server.json
+Restart=on-failure
+RestartSec=2
+# SIGINT reaches Console.CancelKeyPress so the server can close ALSA cleanly.
+KillSignal=SIGINT
+TimeoutStopSec=15
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

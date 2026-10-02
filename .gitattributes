@@ -4,3 +4,7 @@
 *.yml text eol=lf
 *.props text eol=lf
 *.sln text eol=crlf
+*.sh text eol=lf
+*.service text eol=lf
+*.example text eol=lf
+*.py text eol=lf

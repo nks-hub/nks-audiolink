@@ -1,0 +1,9 @@
+{
+  "port": 7355,
+  "name": "NKS AudioLink",
+  "sink": "alsa:default",
+  "allowCidrs": ["127.0.0.0/8"],
+  "idleReleaseSec": 5,
+  "targetLatencyMs": 30,
+  "pskBase64": null
+}

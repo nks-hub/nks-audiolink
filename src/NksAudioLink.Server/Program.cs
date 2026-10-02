@@ -5,7 +5,13 @@ try
 {
     if (args.Length == 0 || args[0] is "help" or "--help")
     {
-        Console.WriteLine("nksaudio-server run [--config FILE] [--sink null|wav:FILE] [--port PORT]");
+        Console.WriteLine("nksaudio-server run [--config FILE] [--sink null|wav:FILE|alsa:DEVICE] [--port PORT]");
+        Console.WriteLine("nksaudio-server devices");
+        return;
+    }
+    if (args[0] == "devices")
+    {
+        foreach (var card in AlsaSink.ListCards()) Console.WriteLine(card);
         return;
     }
     if (args[0] != "run") throw new ArgumentException("Unknown server command.");
