@@ -2,7 +2,7 @@
 
 Stav se aktualizuje podle ověřených výsledků. Zaškrtnutí fáze vyžaduje i její skutečný test.
 
-- [ ] 0. Kostra řešení, lokální build/test, soukromý GitHub repozitář a zelené CI.
+- [x] 0. Kostra řešení, lokální build/test, soukromý GitHub repozitář a zelené CI. Ověřeno 2026-10-02: CI Windows i Linux uspělo.
 - [ ] 1. Core: přesný UDP protokol, HMAC, jitter buffer, korekce driftu a testy.
 - [ ] 2. UDP server a sinky WAV/null; test tónu přes síť a kontrola 440 Hz.
 - [ ] 3. ALSA sink, systemd nasazení a desetiminutový test na cílovém Linuxu.

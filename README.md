@@ -10,7 +10,7 @@ Plánovaný režim virtuální zvukovky používá samostatně instalovaný, pod
 
 ## Stav
 
-Existuje kostra řešení. Přenos zvuku, GUI ani nasazení zatím nejsou dokončené. Průběh a kritéria ověření jsou v [TODO.md](TODO.md). Žádné binárky ovladače ani konfigurace konkrétní instalace nejsou součástí repozitáře.
+Existuje kostra řešení a první část Core: čtení/zápis UDP paketů, HMAC a jitter buffer. Přenos zvuku, GUI ani nasazení zatím nejsou dokončené. Průběh a kritéria ověření jsou v [TODO.md](TODO.md). Žádné binárky ovladače ani konfigurace konkrétní instalace nejsou součástí repozitáře.
 
 ## Sestavení
 
