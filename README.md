@@ -5,7 +5,7 @@
 [![Version](https://img.shields.io/badge/version-0.1.0-orange.svg)](CHANGELOG.md)
 [![.NET 9](https://img.shields.io/badge/.NET-9-512BD4.svg)](https://dotnet.microsoft.com/)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%2B%20Linux-0078D4.svg)](#how-it-works)
-[![License: all rights reserved](https://img.shields.io/badge/license-all%20rights%20reserved-6B7280.svg)](#license)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 > **Stream audio from a Windows PC to a Linux sound card over your local network.** The Windows client captures playback or an input device through WASAPI, the Windows audio API, and sends uncompressed stereo PCM over UDP. The C#/.NET 9 server plays it through ALSA, the Linux audio interface.
 
@@ -122,7 +122,7 @@ Contributions are welcome! For major changes, please open an issue first.
 
 ## License
 
-**All rights reserved.** Publishing the source does not grant permission to copy, modify or distribute AudioLink. NAudio has its own MIT license; packages also include the licenses for the bundled .NET runtime. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+MIT License — see [LICENSE](LICENSE) for details. NAudio has its own MIT license; packages also include the licenses for the bundled .NET runtime. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ---
 
