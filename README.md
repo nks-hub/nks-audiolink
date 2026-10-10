@@ -1,12 +1,13 @@
-[![CI](https://github.com/nks-hub/nks-audiolink/actions/workflows/ci.yml/badge.svg)](https://github.com/nks-hub/nks-audiolink/actions/workflows/ci.yml)
-[![Release build](https://github.com/nks-hub/nks-audiolink/actions/workflows/release.yml/badge.svg)](https://github.com/nks-hub/nks-audiolink/actions/workflows/release.yml)
-[![.NET 9](https://img.shields.io/badge/.NET-9-512BD4)](https://dotnet.microsoft.com/)
-[![Platforms](https://img.shields.io/badge/platforms-Windows%20%2B%20Linux-0078D4)](#how-it-works)
-[![License: all rights reserved](https://img.shields.io/badge/license-all%20rights%20reserved-6B7280)](#license)
-
 # NKS AudioLink
 
-**Stream audio from a Windows PC to a Linux sound card over your local network.** The Windows client captures playback or an input device through WASAPI, the Windows audio API, and sends uncompressed stereo PCM over UDP. The C#/.NET 9 server plays it through ALSA, the Linux audio interface.
+[![CI](https://github.com/nks-hub/nks-audiolink/actions/workflows/ci.yml/badge.svg)](https://github.com/nks-hub/nks-audiolink/actions/workflows/ci.yml)
+[![Release build](https://github.com/nks-hub/nks-audiolink/actions/workflows/release.yml/badge.svg)](https://github.com/nks-hub/nks-audiolink/actions/workflows/release.yml)
+[![Version](https://img.shields.io/badge/version-0.1.0-orange.svg)](CHANGELOG.md)
+[![.NET 9](https://img.shields.io/badge/.NET-9-512BD4.svg)](https://dotnet.microsoft.com/)
+[![Platforms](https://img.shields.io/badge/platforms-Windows%20%2B%20Linux-0078D4.svg)](#how-it-works)
+[![License: all rights reserved](https://img.shields.io/badge/license-all%20rights%20reserved-6B7280.svg)](#license)
+
+> **Stream audio from a Windows PC to a Linux sound card over your local network.** The Windows client captures playback or an input device through WASAPI, the Windows audio API, and sends uncompressed stereo PCM over UDP. The C#/.NET 9 server plays it through ALSA, the Linux audio interface.
 
 AudioLink provides a Windows WPF app, a command-line client and a Linux systemd service. Audio uses 48 kHz, 16-bit stereo samples in 5 ms frames. The server runs without PulseAudio, PipeWire or a desktop session. The transport is intended for a trusted LAN or VPN; physical end-to-end latency has not been measured.
 
@@ -16,27 +17,24 @@ The app is connected to a localhost diagnostic server in this screenshot. Its nu
 
 ## Features
 
-- **Three capture modes:** the full output of a selected playback device, a separately installed VB-CABLE virtual device, or another recording input. Virtual mode switches the Windows default output while connected and restores it on disconnect.
-- **Linux audio output:** direct ALSA playback as an unprivileged systemd service. WAV and null outputs are available for diagnostics.
-- **Timing and recovery:** a jitter buffer absorbs short variations in packet arrival. Clock drift correction and silent frames keep the audio timeline running. The client reconnects after server outages and recreates capture after a device error.
-- **Controls and statistics:** server discovery, target buffer, live gain adjustment, a system tray menu and statistics for buffer fill, output queue delay, network RTT, lost and late frames, underruns and overruns.
-- **Access control:** `allowCidrs` restricts client addresses. An optional shared key authenticates packets with HMAC. Audio is not encrypted.
+- 🎙️ **Three capture modes** - the full output of a selected playback device, a separately installed VB-CABLE virtual device, or another recording input. Virtual mode switches the Windows default output while connected and restores it on disconnect.
+- 🔊 **Linux audio output** - direct ALSA playback as an unprivileged systemd service. WAV and null outputs are available for diagnostics.
+- ⏱️ **Timing and recovery** - a jitter buffer absorbs short variations in packet arrival. Clock drift correction and silent frames keep the audio timeline running. The client reconnects after server outages and recreates capture after a device error.
+- 📊 **Controls and statistics** - server discovery, target buffer, live gain adjustment, a system tray menu and statistics for buffer fill, output queue delay, network RTT, lost and late frames, underruns and overruns.
+- 🔒 **Access control** - `allowCidrs` restricts client addresses. An optional shared key authenticates packets with HMAC. Audio is not encrypted.
 
 [VB-CABLE](https://vb-audio.com/Cable/) is a separate VB-Audio driver. AudioLink does not bundle it; ordinary WASAPI loopback capture does not require it.
 
-## How it works
+## Requirements
 
-```mermaid
-flowchart LR
-    A["Windows<br/>WPF app or CLI"] --> B["WASAPI<br/>playback capture or input"]
-    B --> C["UDP PCM<br/>5 ms frames"]
-    C --> D["Linux C# server<br/>jitter buffer and clock correction"]
-    D --> E["ALSA<br/>physical sound card"]
-```
+- Windows x64 for the WPF app and CLI client (WASAPI capture)
+- Linux x64 with ALSA for the server; no PulseAudio, PipeWire or desktop session needed
+- systemd for running the server as a service
+- Portable packages bundle .NET runtime 9.0.20; building from source needs .NET SDK 9.0.318 or a later patch
+- Optional: [VB-CABLE](https://vb-audio.com/Cable/) for the virtual-device capture mode
+- A trusted LAN or VPN between client and server
 
-The server accepts one active session. The default UDP port is `7355`. With its default configuration it accepts only local connections and uses the null output. Set `allowCidrs` and an ALSA device before using it across a network. See the [protocol reference](docs/PROTOCOL.md) for packet formats.
-
-## Quick start
+## Installation
 
 ### Portable packages
 
@@ -50,9 +48,33 @@ sh deploy/linux/install.sh ./NksAudioLink.Server
 
 Edit `/etc/nks-audiolink/server.json` using [server.json.example](deploy/linux/server.json.example), especially `sink`, `allowCidrs` and any `pskBase64`, then run `systemctl enable --now nks-audiolink`. The installer installs the binary and unit but does not start or restart the service. See the [Linux installation guide](docs/INSTALL.md) for configuration and updates.
 
+## Usage
+
 On Windows, open `NksAudioLink.App.exe`, enter the server address or use **Find**, choose a source and select **Connect**. The [Windows guide](docs/WINDOWS.md) covers the app, CLI and optional virtual-device mode.
 
-### Build from source
+## How it works
+
+```mermaid
+flowchart LR
+    A["Windows<br/>WPF app or CLI"] --> B["WASAPI<br/>playback capture or input"]
+    B --> C["UDP PCM<br/>5 ms frames"]
+    C --> D["Linux C# server<br/>jitter buffer and clock correction"]
+    D --> E["ALSA<br/>physical sound card"]
+```
+
+The server accepts one active session. The default UDP port is `7355`. With its default configuration it accepts only local connections and uses the null output. Set `allowCidrs` and an ALSA device before using it across a network. See the [protocol reference](docs/PROTOCOL.md) for packet formats.
+
+## Documentation
+
+| Topic | Guide |
+|---|---|
+| Linux installation, configuration and operation | [docs/INSTALL.md](docs/INSTALL.md) |
+| Windows app, CLI and optional VB-CABLE | [docs/WINDOWS.md](docs/WINDOWS.md) |
+| UDP protocol | [docs/PROTOCOL.md](docs/PROTOCOL.md) |
+| Tests, measurements and their limits | [docs/VALIDATION.md](docs/VALIDATION.md) |
+| Progress and changes | [TODO.md](TODO.md) · [CHANGELOG.md](CHANGELOG.md) |
+
+## Development
 
 Use .NET SDK **9.0.318** or a later patch allowed by [global.json](global.json). On Windows:
 
@@ -70,7 +92,7 @@ dotnet publish src/NksAudioLink.Server/NksAudioLink.Server.csproj \
   -p:PublishSingleFile=true -o publish/linux-x64
 ```
 
-## Validation
+## Testing
 
 | Check | Result and scope |
 |---|---|
@@ -83,20 +105,20 @@ dotnet publish src/NksAudioLink.Server/NksAudioLink.Server.csproj \
 
 The owner confirmed clean playback on the receiver. Video synchronization, physical network disconnection and PC sleep/resume checks remain. Physical end-to-end latency has not been independently measured. [Validation details](docs/VALIDATION.md) distinguish measurements from estimates; [TODO.md](TODO.md) tracks the remaining phases.
 
-## Documentation
+## Contributing
 
-| Topic | Guide |
-|---|---|
-| Linux installation, configuration and operation | [docs/INSTALL.md](docs/INSTALL.md) |
-| Windows app, CLI and optional VB-CABLE | [docs/WINDOWS.md](docs/WINDOWS.md) |
-| UDP protocol | [docs/PROTOCOL.md](docs/PROTOCOL.md) |
-| Tests, measurements and their limits | [docs/VALIDATION.md](docs/VALIDATION.md) |
-| Progress and changes | [TODO.md](TODO.md) · [CHANGELOG.md](CHANGELOG.md) |
+Contributions are welcome! For major changes, please open an issue first.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'feat: description'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ## Support
 
 - 📧 **Email:** dev@nks-hub.cz
-- 🐛 **Bug reports and ideas:** [GitHub Issues](https://github.com/nks-hub/nks-audiolink/issues)
+- 🐛 **Bug reports:** [GitHub Issues](https://github.com/nks-hub/nks-audiolink/issues)
 
 ## License
 
