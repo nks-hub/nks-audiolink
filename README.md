@@ -103,7 +103,7 @@ dotnet publish src/NksAudioLink.Server/NksAudioLink.Server.csproj \
 | Measured LAN stage | Nine clicks took **22.96–37.88 ms**, median **31.39 ms**, from the Windows UDP send call to a Linux WAV write. This excludes WASAPI capture, ALSA playback and the receiver. |
 | Server CPU | The 600-second physical ALSA run at 30 ms used **1.262% of one CPU core**, compared with about 3% before tuning. An isolated null-output test used 1.40%. |
 
-The owner confirmed clean playback on the receiver. Video synchronization, physical network disconnection and PC sleep/resume checks remain. Physical end-to-end latency has not been independently measured. [Validation details](docs/VALIDATION.md) distinguish measurements from estimates; [TODO.md](TODO.md) tracks the remaining phases.
+The owner confirmed clean playback on the receiver. Video synchronization, physical network disconnection and PC sleep/resume checks remain. [Validation details](docs/VALIDATION.md) distinguish measurements from estimates; [TODO.md](TODO.md) tracks the remaining phases.
 
 ## Contributing
 
