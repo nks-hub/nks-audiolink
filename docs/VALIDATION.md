@@ -2,7 +2,7 @@
 
 ## RC3 verification, 2026-10-23
 
-RC3 removes a duplicated downward safety reserve from predictive buffering. An estimated need around 16 ms could leave RC2 at 25 ms indefinitely; the next 20 ms target already covers that estimate, including its safety margin. The wire format, limits, increase protection, decrease persistence and learned failure hold are unchanged.
+RC3 removes a duplicated downward safety reserve from predictive buffering. An estimated need around 16 ms could leave RC2 at 25 ms indefinitely; the next 20 ms target already covers that estimate, including its safety margin. The wire format, limits, increase protection, decrease persistence and 120-second learned hold duration are unchanged.
 
 | Check | RC3 evidence |
 |---|---|
@@ -19,9 +19,16 @@ These deterministic controller checks do not guarantee protection against unseen
 
 [Main CI 39961190436](https://github.com/nks-hub/nks-audiolink/actions/runs/39961190436) passed for source `c6a45b217f373290dcf38ebabb47d2b74d5484e1`. Strict local checks verified both archives, all 26 Windows and 24 Linux files, embedded runtime 9.0.20, source-bound documentation/resources, reports, checksums, manifest and executable versions. A cold WSL startup initially exceeded the local version probe's 30-second timeout; a longer startup allowance returned the correct server version with exit code zero, without restarting WSL or changing the live service.
 
+[Published RC3](https://github.com/nks-hub/nks-audiolink/releases/tag/v0.1.0-rc.3) passed its [tag workflow's second attempt](https://github.com/nks-hub/nks-audiolink/actions/runs/39962553144/attempts/2), following the separately documented test-fixture timeout below. The annotated tag resolves to the exact source above. The public prerelease contains the six expected assets; notes match the dated changelog and build links. Independent download/verification confirmed that both archives, reports, checksums and all three binaries are byte-identical to the verified main-CI packages installed here. The public [build manifest](https://github.com/nks-hub/nks-audiolink/releases/download/v0.1.0-rc.3/release-build.json) binds version, source and package hashes.
+
+| Public archive | SHA-256 |
+|---|---|
+| Windows x64 ZIP | `8c4a8951f535a0a13e6a856e1d25e14cb67c1c65d131c5735e8a906f07b2e233` |
+| Linux x64 TAR.GZ | `3692d6ae64765e8f30f35b3527dd29de406c11a7c9db95810aaf26725f36dc41` |
+
 The verified server was installed with a rollback backup and unchanged configuration. The existing RC2 client reconnected in approximately **1.98 seconds**. The verified RC3 desktop then replaced the stable installation used by the Desktop shortcut, preserving the latest gain/source/adaptive/manual/startup settings and additional files. All installed package files and About version were checked. No real clipboard or live effect controls were used during verification.
 
-One fresh **600.011-second** hardware run passed every gate: 121 status/ALSA samples and 600 one-second history samples retained the same predictive session, process, ALSA owner and trigger. Every ALSA state was RUNNING, hardware position increased throughout, all jitter/native counters remained **zero**, and the output/recovery journal had no events. Server CPU was **1.548% of one core**.
+One fresh **600.011-second** hardware run passed every gate. All 121 status/ALSA samples and 600 one-second history samples retained the same predictive session. The 121 status/ALSA samples also confirmed one process, one ALSA owner and one trigger timestamp. Every sampled ALSA state was RUNNING, hardware position increased throughout, all jitter/native counters remained **zero**, and the output/recovery journal had no events. Server CPU was **1.548% of one core**.
 
 The target reached the negotiated **20 ms** minimum and stayed there for 525 of the run's 600 history samples. Predicted need ranged from **15.94 to 18.14 ms**. Separate startup history records the full **40→35→30→25→20 ms** sequence at 0/30/60/90/120.001 seconds from its first session sample; the ten-minute monitor began after the first downward step. The desktop's independent 600-second check also stayed Connected, with unchanged gain, active meters, a live matching graph, zero read errors and zero lost/late/underrun/overrun counters. There were no manual setting changes, restarts or retries during either run. These observations establish this run's behavior, not universal dropout immunity or measured end-to-end latency.
 
@@ -30,6 +37,8 @@ The target reached the negotiated **20 ms** minimum and stayed there for 525 of 
 The first [tagged release attempt](https://github.com/nks-hub/nks-audiolink/actions/runs/39962553144/attempts/1) timed out in the Windows SDK 9.0.318 limiter-tail integration test; fail-fast cancelled 9.0.203. Linux jobs passed. The same source had passed the main CI matrix. The timeout did not demonstrate a product PCM failure.
 
 Independent probes reproduced two fixture defects: accessing the synthetic source queue for sender-side clearing could consume its only audio refill, and the fake peer ignored re-HELLO after a sender scheduling interruption. A forced 100 ms pause made the old fake peer time out deterministically. The test-only correction waits for acknowledged silent readiness, supplies continuous PCM until observed capture is stopped, and answers control packets. It keeps the exact 48-frame PCM tail, subsequent silence and meter assertions, plus the original eight-second deadline. All 57 client tests and five repeated forced-pause cases passed. The CI log contains no sender timing trace, so the precise original trigger remains inferred. Production code, candidate version, tag and installed binaries are unchanged by this fixture correction; one evidence-based retry of the original tagged jobs retains the failed attempt in history.
+
+That single retry passed and published the immutable candidate. The fixture correction was committed separately as `f2e2c76332ba0f1abe8f054940659a24e11dfe19`; its [hosted CI matrix](https://github.com/nks-hub/nks-audiolink/actions/runs/39964699178) also passed Windows and Linux on both SDKs. Subsequent main-branch documentation/test artifacts are distinct from the tagged candidate; they do not replace its assets or the installed build.
 
 ## RC2 verification, 2026-10-23
 
@@ -64,7 +73,7 @@ One uninterrupted **600.012-second** read-only run collected 121 status/ALSA sam
 
 **The zero-dropout gate failed:** one lost frame, one late frame and one underrun occurred at about 268.2 seconds. There were no overruns or duplicates. The target had descended from the client's initial 40 ms to 35 ms before monitoring, then to 30 and 25 ms. The timing burst raised it to 35 ms with `Underrun`; learned protection held it before later 30 and 25 ms steps. Estimates ranged from 15.96 to 35.90 ms. The observation does not isolate whether the burst originated in sender scheduling or the network. No settings were changed, counters reset or run repeated to obtain a passing result.
 
-The final 25 ms target with estimated need around 16 ms confirms the unnecessary RC2 downward reserve addressed in RC3. Removing that reserve does not claim to eliminate unseen timing spikes; RC3 requires its own live observation.
+The final 25 ms target with estimated need around 16 ms confirms the unnecessary RC2 downward reserve addressed in RC3. Removing that reserve does not claim to eliminate unseen timing spikes; the separate RC3 live observation is recorded above.
 
 ## Release candidate verification, 2026-10-23
 
