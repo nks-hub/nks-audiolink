@@ -139,8 +139,11 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
         void ConnectionInterrupted()
         {
             int previous;
-            lock (connectionGate) previous = Interlocked.Exchange(ref accepted, 0);
-            _levelMeter.Reset();
+            lock (connectionGate)
+            {
+                previous = Interlocked.Exchange(ref accepted, 0);
+                _levelMeter.Reset();
+            }
             if (previous == 1) StateChanged?.Invoke("Waiting for server");
         }
 
@@ -170,7 +173,11 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
                         lock (connectionGate)
                         {
                             previous = accepted;
-                            if (next == 1 && previous == 0) source.Queue.Clear();
+                            if (previous != next)
+                            {
+                                _levelMeter.Reset();
+                                if (next == 1) source.Queue.Clear();
+                            }
                             lastStatsTick = Stopwatch.GetTimestamp();
                             Volatile.Write(ref accepted, next);
                         }
@@ -187,7 +194,11 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
                     else if (header.Type == PacketType.Reject)
                     {
                         if (responseBody.Length != 1 || !Enum.IsDefined((RejectReason)responseBody[0])) continue;
-                        Interlocked.Exchange(ref accepted, 0);
+                        lock (connectionGate)
+                        {
+                            Interlocked.Exchange(ref accepted, 0);
+                            _levelMeter.Reset();
+                        }
                         Interlocked.CompareExchange(ref rejectionFailure,
                             new ServerRejectedException((RejectReason)responseBody[0]), null);
                         runStop.Cancel();
@@ -241,7 +252,10 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
                         lock (connectionGate)
                         {
                             if (accepted == 1 && (lastStatsTick == 0 || Stopwatch.GetElapsedTime(lastStatsTick) > TimeSpan.FromSeconds(3)))
+                            {
                                 timedOut = Interlocked.Exchange(ref accepted, 0) == 1;
+                                _levelMeter.Reset();
+                            }
                         }
                         if (timedOut) StateChanged?.Invoke("Waiting for server");
                         if (Volatile.Read(ref accepted) == 1)
@@ -258,8 +272,16 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
                             }
                             int size = AudioMessage.Write(body, sampleIndex, Protocol.SamplesPerFrame,
                                 hasAudio ? body.AsSpan(AudioMessage.PrefixSize, Protocol.PcmBytesPerFrame) : [], !hasAudio);
-                            if (hasAudio) _levelMeter.ProcessPcm16(body.AsSpan(AudioMessage.PrefixSize, Protocol.PcmBytesPerFrame));
-                            else _levelMeter.ProcessSilence(Protocol.SamplesPerFrame);
+                            // Publish levels atomically with connection transitions, so an
+                            // in-flight frame cannot restore stale levels after a reset.
+                            lock (connectionGate)
+                            {
+                                if (accepted == 1)
+                                {
+                                    if (hasAudio) _levelMeter.ProcessPcm16(body.AsSpan(AudioMessage.PrefixSize, Protocol.PcmBytesPerFrame));
+                                    else _levelMeter.ProcessSilence(Protocol.SamplesPerFrame);
+                                }
+                            }
                             SendSync(PacketType.Audio, hasAudio ? PacketFlags.None : PacketFlags.Silent, size);
                             sampleIndex += Protocol.SamplesPerFrame;
                         }

@@ -11,6 +11,64 @@ namespace NksAudioLink.Client.Tests;
 public sealed class AudioStreamClientTests
 {
     [Fact]
+    public async Task StatsTimeoutClearsSentLevelsBeforeQuietSameSessionReacceptance()
+    {
+        using var server = new PacketServer();
+        byte[] pcm = new byte[Protocol.PcmBytesPerFrame * 3];
+        for (int index = 0; index < pcm.Length; index += 2)
+            BinaryPrimitives.WriteInt16LittleEndian(pcm.AsSpan(index), short.MaxValue);
+        int emit = 1, observingOutage = 0, reaccepting = 0;
+        FakeSource? source = null;
+        source = new FakeSource
+        {
+            OnQueueAccess = () =>
+            {
+                if (Thread.CurrentThread.Name == "NKS AudioLink sender" && Volatile.Read(ref emit) == 1)
+                    source!.Write(pcm);
+            }
+        };
+        var client = new AudioStreamClient(Config(server.Port), (_, _) => source);
+        var timeoutLevel = new TaskCompletionSource<AudioLevelSnapshot>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var reacceptedLevel = new TaskCompletionSource<AudioLevelSnapshot>(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.StateChanged += state =>
+        {
+            if (state == "Waiting for server" && Volatile.Read(ref observingOutage) == 1)
+                timeoutLevel.TrySetResult(client.Levels);
+        };
+        client.StatsReceived += (stats, _) =>
+        {
+            if (stats.Accepted && Volatile.Read(ref reaccepting) == 1)
+                reacceptedLevel.TrySetResult(client.Levels);
+        };
+        using var stop = new CancellationTokenSource();
+        Task running = client.RunAsync(null, true, stop.Token);
+        try
+        {
+            await Eventually(() => client.Levels.LeftRmsDbfs > -0.01 && client.Levels.Clipping, TimeSpan.FromSeconds(3));
+            uint originalSession = server.Audio.First().Session;
+            server.BeginOutage();
+            Volatile.Write(ref observingOutage, 1);
+            // Keep capture active until the transport times out: stopping it sooner
+            // would let silent packets decay the meter and mask the stale-state bug.
+            var atTimeout = await timeoutLevel.Task.WaitAsync(TimeSpan.FromSeconds(6));
+            Assert.Equal(new AudioLevelSnapshot(-90, -90, -90, -90, false), atTimeout);
+
+            Volatile.Write(ref emit, 0);
+            source.Queue.Clear();
+            int beforeReacceptance = server.Audio.Count;
+            Volatile.Write(ref reaccepting, 1);
+            server.EndOutage();
+            var atReacceptance = await reacceptedLevel.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal(new AudioLevelSnapshot(-90, -90, -90, -90, false), atReacceptance);
+            await Eventually(() => server.Audio.Count >= beforeReacceptance + 5, TimeSpan.FromSeconds(3));
+            var recovered = server.Audio.Skip(beforeReacceptance).ToArray();
+            Assert.All(recovered, packet => { Assert.True(packet.Silent); Assert.Equal(originalSession, packet.Session); });
+            Assert.Equal(new AudioLevelSnapshot(-90, -90, -90, -90, false), client.Levels);
+        }
+        finally { await Stop(stop, running); }
+    }
+
+    [Fact]
     public async Task SentLevelsFollowPostGainWirePcmClipThenDecayOnSilentFramesAndResetOnStop()
     {
         using var server = new PacketServer();

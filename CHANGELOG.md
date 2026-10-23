@@ -21,6 +21,7 @@
 - Compact borderless desktop window with native resizing, waveform app/tray icons, About, activity history and graceful Quit. Connection controls stay at the top; live measurements remain visible beside configuration, including at the minimum window size.
 - Optional read-only Kestrel server dashboard and JSON statistics API, disabled by default and restricted by `allowCidrs`; desktop dashboard launcher with a separate HTTP port, 7356 by default. Session counters and stereo levels remain visible above the expandable buffer history.
 - Stereo PCM meters in the client and server dashboard: 300 ms RMS, one-second held peaks and clipping indication. The browser includes 60-sample left/right signal history; the existing buffer graph remains available in an expandable section.
+- Clear client signal levels on a server-response timeout and reconnection, preventing stale RMS, held peaks and clipping from appearing after an outage.
 - Verify release archives against a public-file allowlist, actual embedded runtime versions, license content, extraction permissions and round-trip file hashes. Include the project's MIT license in both distributions.
 - Linux thread and socket settings reduced server CPU to 1.262% of one core during a 600-second physical ALSA stream. All client error samples were zero at a 30 ms target buffer; a separate 10 ms run accumulated late frames.
 - English documentation, app controls, tooltips, CLI help and error messages.
