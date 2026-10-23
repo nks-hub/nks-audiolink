@@ -10,95 +10,56 @@ permissions:
   contents: read
 
 jobs:
-  windows:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - name: Test package verification
-        run: python -m unittest discover -s tests -p test_release_verification.py
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '9.0.318'
-      - name: Select release SDK
-        run: dotnet new globaljson --sdk-version 9.0.318 --roll-forward disable --force
-      - name: Test Windows solution
-        run: dotnet test NksAudioLink.sln --configuration Release
-      - name: Publish Windows app
-        run: dotnet publish src/NksAudioLink.App/NksAudioLink.App.csproj --configuration Release --runtime win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true --output publish/windows
-      - name: Publish Windows CLI
-        run: dotnet publish src/NksAudioLink.Cli/NksAudioLink.Cli.csproj --configuration Release --runtime win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true --output publish/cli
-      - name: Add documentation and package
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Path publish/windows/cli -Force | Out-Null
-          Copy-Item -Path publish/cli/* -Destination publish/windows/cli -Recurse -Force
-          Copy-Item README.md, LICENSE, TODO.md, CHANGELOG.md, THIRD_PARTY_NOTICES.md -Destination publish/windows
-          Copy-Item docs -Destination publish/windows/docs -Recurse
-          New-Item -ItemType Directory -Path publish/windows/licenses -Force | Out-Null
-          Copy-Item deploy/licenses/dotnet-coreapp-win-x64 -Destination publish/windows/licenses/dotnet-coreapp-win-x64 -Recurse
-          Copy-Item deploy/licenses/dotnet-windowsdesktop-win-x64 -Destination publish/windows/licenses/dotnet-windowsdesktop-win-x64 -Recurse
-      - name: Verify and package Windows release
-        run: python tools/verify_release.py publish/windows --platform windows-x64 --create-archive nks-audiolink-windows-x64.zip --report windows-package-verification.json
-      - uses: actions/upload-artifact@v4
-        with:
-          name: windows-x64
-          path: |
-            nks-audiolink-windows-x64.zip
-            windows-package-verification.json
-          if-no-files-found: error
-
-  linux:
+  version:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.metadata.outputs.version }}
+      prerelease: ${{ steps.metadata.outputs.prerelease }}
+      source_revision: ${{ steps.metadata.outputs.source_revision }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Test package verification
-        run: python -m unittest discover -s tests -p test_release_verification.py
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '9.0.318'
-      - name: Select release SDK
-        run: dotnet new globaljson --sdk-version 9.0.318 --roll-forward disable --force
-      - name: Test portable code
-        run: dotnet test tests/NksAudioLink.Tests/NksAudioLink.Tests.csproj --configuration Release
-      - name: Publish Linux server
-        run: dotnet publish src/NksAudioLink.Server/NksAudioLink.Server.csproj --configuration Release --runtime linux-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true --output publish/linux
-      - name: Add documentation and package
-        run: |
-          cp README.md LICENSE TODO.md CHANGELOG.md THIRD_PARTY_NOTICES.md publish/linux/
-          cp -R docs publish/linux/docs
-          mkdir -p publish/linux/licenses
-          cp -R deploy/licenses/dotnet-coreapp-linux-x64 publish/linux/licenses/
-          cp -R deploy/licenses/dotnet-aspnetcore-linux-x64 publish/linux/licenses/
-          mkdir -p publish/linux/deploy
-          cp -R deploy/linux publish/linux/deploy/linux
-          chmod +x publish/linux/NksAudioLink.Server publish/linux/deploy/linux/install.sh
-      - name: Verify and package Linux release
-        run: python tools/verify_release.py publish/linux --platform linux-x64 --create-archive nks-audiolink-linux-x64.tar.gz --report linux-package-verification.json
-      - uses: actions/upload-artifact@v4
-        with:
-          name: linux-x64
-          path: |
-            nks-audiolink-linux-x64.tar.gz
-            linux-package-verification.json
-          if-no-files-found: error
+      - name: Validate source version and release tag
+        id: metadata
+        env:
+          RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_type == 'tag' && github.ref_name || '' }}
+        run: python tools/release_metadata.py --tag "$RELEASE_TAG" --source-revision "$GITHUB_SHA" --github-output "$GITHUB_OUTPUT" --notes-file release-notes.md
+
+  tests:
+    needs: version
+    uses: ./.github/workflows/ci.yml
+
+  packages:
+    needs: [version, tests]
+    uses: ./.github/workflows/package.yml
 
   github_release:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
-    needs: [windows, linux]
+    needs: [version, packages]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
       - uses: actions/download-artifact@v4
         with:
           merge-multiple: true
-      - name: Publish assets
+      - name: Publish versioned assets
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${GITHUB_REF_NAME}" nks-audiolink-windows-x64.zip nks-audiolink-linux-x64.tar.gz --repo "${GITHUB_REPOSITORY}" --generate-notes
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_VERSION: ${{ needs.version.outputs.version }}
+          PRERELEASE: ${{ needs.version.outputs.prerelease }}
+          SOURCE_REVISION: ${{ needs.version.outputs.source_revision }}
+        run: |
+          sha256sum --check SHA256SUMS
+          python tools/release_metadata.py --tag "$RELEASE_TAG" --source-revision "$SOURCE_REVISION" --assets . --build-manifest expected-release-build.json --notes-file release-notes.md --repository "$GITHUB_REPOSITORY" --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          cmp release-build.json expected-release-build.json
+          args=(--repo "$GITHUB_REPOSITORY" --verify-tag --notes-file release-notes.md --title "NKS AudioLink $RELEASE_VERSION")
+          if [ "$PRERELEASE" = true ]; then args+=(--prerelease --latest=false); fi
+          gh release create "$RELEASE_TAG" nks-audiolink-windows-x64.zip nks-audiolink-linux-x64.tar.gz SHA256SUMS windows-package-verification.json linux-package-verification.json release-build.json "${args[@]}"

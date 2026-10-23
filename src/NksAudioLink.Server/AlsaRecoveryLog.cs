@@ -6,12 +6,23 @@ namespace NksAudioLink.Server;
 internal sealed class AlsaRecoveryLog(Action<string> write, Func<long>? timestamp = null)
 {
     private readonly Func<long> _timestamp = timestamp ?? Stopwatch.GetTimestamp;
+    private readonly object _gate = new();
     private long _errors, _recoveries, _failures, _underruns, _suspends, _suppressed;
     private long _lastLogTick;
     private bool _hasLogged;
     private int _lastError, _lastResult;
 
     public void Record(int nativeError, int recoveryResult)
+    {
+        lock (_gate) RecordLocked(nativeError, recoveryResult);
+    }
+
+    public NativeOutputStatus GetSnapshot()
+    {
+        lock (_gate) return new(_errors, _recoveries, _failures, _underruns, _suspends);
+    }
+
+    private void RecordLocked(int nativeError, int recoveryResult)
     {
         _errors++;
         if (recoveryResult >= 0) _recoveries++; else _failures++;
@@ -33,14 +44,17 @@ internal sealed class AlsaRecoveryLog(Action<string> write, Func<long>? timestam
     // The normal write path only pays this branch when there is no pending log.
     public void FlushIfDue()
     {
-        if (_suppressed == 0) return;
-        long now = _timestamp();
-        if (now - _lastLogTick >= Stopwatch.Frequency) Emit(now, "summary");
+        if (Volatile.Read(ref _suppressed) == 0) return;
+        lock (_gate)
+        {
+            long now = _timestamp();
+            if (_suppressed > 0 && now - _lastLogTick >= Stopwatch.Frequency) Emit(now, "summary");
+        }
     }
 
     public void Flush()
     {
-        if (_suppressed > 0) Emit(_timestamp(), "summary");
+        lock (_gate) if (_suppressed > 0) Emit(_timestamp(), "summary");
     }
 
     private void Emit(long now, string kind)

@@ -1,7 +1,11 @@
 name: CI
 on:
   push:
+    branches: ['**']
   pull_request:
+  workflow_call:
+permissions:
+  contents: read
 jobs:
   windows:
     runs-on: windows-latest
@@ -13,7 +17,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: python -m unittest discover -s tests -p test_release_verification.py
+      - run: python -m unittest discover -s tests -p "test_release*.py"
+      - run: python tools/release_metadata.py
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ matrix.sdk }}
@@ -33,7 +38,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: python -m unittest discover -s tests -p test_release_verification.py
+      - run: python -m unittest discover -s tests -p "test_release*.py"
+      - run: python tools/release_metadata.py
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -47,3 +53,7 @@ jobs:
           dotnet --version
       - run: dotnet build src/NksAudioLink.Server/NksAudioLink.Server.csproj --configuration Release
       - run: dotnet test tests/NksAudioLink.Tests/NksAudioLink.Tests.csproj --configuration Release
+  packages:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [windows, linux]
+    uses: ./.github/workflows/package.yml

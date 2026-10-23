@@ -3,10 +3,11 @@ using NksAudioLink.Core;
 
 namespace NksAudioLink.Server;
 
-public sealed class AlsaSink : IAudioSink
+public sealed class AlsaSink : IAudioSink, INativeOutputDiagnostics
 {
     private IntPtr _pcm;
     private readonly AlsaRecoveryLog _recoveryLog = new(Console.Error.WriteLine);
+    public NativeOutputStatus GetNativeOutputStatus() => _recoveryLog.GetSnapshot();
 
     public AlsaSink(string device, int latencyMs = 20)
     {

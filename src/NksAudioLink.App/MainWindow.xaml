@@ -59,6 +59,12 @@
             <Expander Header="Buffer &amp; startup" Padding="0,10,0,0" BorderBrush="#293644" BorderThickness="0,1,0,0">
               <StackPanel Margin="0,12,0,4">
                 <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="Target buffer" Style="{StaticResource Label}"/><TextBlock Grid.Column="1" x:Name="LatencyValue" Text="30 ms"/></Grid>
+                <ComboBox x:Name="BufferPresetCombo" Margin="0,2,0,7" SelectionChanged="BufferPreset_Changed" AutomationProperties.Name="Target buffer preset" ToolTip="Manual presets: less buffering reduces delay; more buffering tolerates network variation. Choose Custom to keep the slider value.">
+                  <ComboBoxItem Content="Low latency — 20 ms" Tag="20"/>
+                  <ComboBoxItem Content="Balanced — 40 ms" Tag="40"/>
+                  <ComboBoxItem Content="Robust — 80 ms" Tag="80"/>
+                  <ComboBoxItem Content="Custom"/>
+                </ComboBox>
                 <Slider x:Name="LatencySlider" Minimum="10" Maximum="200" Value="30" TickFrequency="5" SmallChange="5" LargeChange="10" IsSnapToTickEnabled="True" ValueChanged="LatencySlider_Changed" AutomationProperties.Name="Target buffer milliseconds"/>
                 <TextBlock Text="Set before connecting. A larger buffer tolerates more network variation but adds delay." Foreground="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,5,0,12"/>
                 <CheckBox x:Name="StartWithWindowsCheck" Content="Start with Windows" Checked="StartWithWindows_Changed" Unchecked="StartWithWindows_Changed"/>
@@ -124,7 +130,7 @@
           </Grid>
           <Expander Grid.Row="2" VerticalAlignment="Stretch" MaxHeight="210" AutomationProperties.Name="Activity log">
             <Expander.Header><DockPanel LastChildFill="True">
-              <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="10,0,0,0"><Button Content="Copy" Click="CopyLog_Click" MinHeight="24" Padding="7,2" Background="Transparent" FontSize="12"/><Button Content="Clear" Click="ClearLog_Click" MinHeight="24" Padding="7,2" Background="Transparent" FontSize="12"/></StackPanel>
+              <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="10,0,0,0"><Button Content="Copy diagnostics" Click="CopyDiagnostics_Click" ToolTip="Copy version, stream settings, statistics and recent activity with shared keys and identities removed." MinHeight="24" Padding="7,2" Background="Transparent" FontSize="12"/><Button Content="Clear" Click="ClearLog_Click" MinHeight="24" Padding="7,2" Background="Transparent" FontSize="12"/></StackPanel>
               <TextBlock Text="Activity log" VerticalAlignment="Center"/>
             </DockPanel></Expander.Header>
             <TextBox x:Name="ActivityLog" Margin="0,7,0,0" MaxHeight="140" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="11" AutomationProperties.Name="Activity log" ToolTip="Last 200 events. Shared keys are never logged."/>

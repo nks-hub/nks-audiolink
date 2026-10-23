@@ -5,6 +5,22 @@ namespace NksAudioLink.Tests;
 
 public sealed class AlsaRecoveryLogTests
 {
+    [Fact]
+    public async Task SnapshotsRemainCoherentDuringConcurrentRecoveryAndPolling()
+    {
+        var log = new AlsaRecoveryLog(_ => { }, () => 0);
+        var writer = Task.Run(() => { for (int i = 0; i < 10000; i++) log.Record(i % 2 == 0 ? -32 : -86, 0); });
+        for (int i = 0; i < 1000; i++)
+        {
+            var state = log.GetSnapshot();
+            Assert.Equal(state.WriteErrors, state.Recoveries + state.Failures);
+            Assert.Equal(state.WriteErrors, state.Underruns + state.Suspensions);
+        }
+        await writer;
+        log.Record(-19, -19);
+        Assert.Equal(new NativeOutputStatus(10001, 10000, 1, 5000, 5000), log.GetSnapshot());
+    }
+
     [Theory]
     [InlineData(-32, "playback-underrun/EPIPE", "playbackUnderruns=1")]
     [InlineData(-86, "stream-suspended/ESTRPIPE", "streamSuspensions=1")]

@@ -45,9 +45,12 @@ public partial class MainWindow : Window
     private bool _quitInProgress;
     private bool _closing;
     private bool _initializing = true;
+    private bool _updatingBufferPreset;
     private string? _preferredDeviceId;
     private DateTime _lastStatsUtc;
     private DateTime _connectionStartedUtc;
+    private StatsMessage? _latestStats;
+    private double? _latestRttMs, _latestEstimatedDelayMs;
     private readonly DispatcherTimer _healthTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly DispatcherTimer _meterTimer = new(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(50) };
 
@@ -57,6 +60,7 @@ public partial class MainWindow : Window
         try { VirtualCableRouting.RestorePending(); }
         catch (Exception ex) { DetailText.Text = "Could not restore the previous sound device. Check the Windows default output. " + ex.Message; }
         LoadSettings();
+        UpdateBufferPreset();
         RefreshDevices();
         InitTray();
         try
@@ -178,6 +182,27 @@ public partial class MainWindow : Window
     private void LatencySlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (LatencyValue is not null) LatencyValue.Text = $"{(int)LatencySlider.Value} ms";
+        UpdateBufferPreset();
+    }
+
+    private void UpdateBufferPreset()
+    {
+        if (BufferPresetCombo is null || LatencySlider is null) return;
+        _updatingBufferPreset = true;
+        try
+        {
+            BufferPresetCombo.SelectedItem = BufferPresetCombo.Items.Cast<ComboBoxItem>()
+                .FirstOrDefault(item => int.TryParse(item.Tag as string, out int value) && value == LatencySlider.Value)
+                ?? BufferPresetCombo.Items.Cast<ComboBoxItem>().Single(item => item.Tag is null);
+        }
+        finally { _updatingBufferPreset = false; }
+    }
+
+    private void BufferPreset_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_initializing || _updatingBufferPreset || !LatencySlider.IsEnabled) return;
+        if (BufferPresetCombo.SelectedItem is ComboBoxItem item && int.TryParse(item.Tag as string, out int value))
+            LatencySlider.Value = value;
     }
 
     private async void Connect_Click(object sender, RoutedEventArgs e)
@@ -239,7 +264,7 @@ public partial class MainWindow : Window
         SetStatus("Connecting", $"Server {config.Server}:{config.Port} · {device.Name}");
         var client = new AudioStreamClient(config);
         _activeClient = client;
-        ServerCard.IsEnabled = SourceCard.IsEnabled = LatencySlider.IsEnabled = false;
+        ServerCard.IsEnabled = SourceCard.IsEnabled = LatencySlider.IsEnabled = BufferPresetCombo.IsEnabled = false;
         client.StatsReceived += (stats, rtt) => Dispatcher.BeginInvoke(() =>
         {
             if (ReferenceEquals(_activeClient, client) && _streamStop is { IsCancellationRequested: false })
@@ -278,7 +303,7 @@ public partial class MainWindow : Window
             _streamTask = null;
             _activeClient = null;
             ResetStats();
-            ServerCard.IsEnabled = SourceCard.IsEnabled = LatencySlider.IsEnabled = true;
+            ServerCard.IsEnabled = SourceCard.IsEnabled = LatencySlider.IsEnabled = BufferPresetCombo.IsEnabled = true;
             ConnectButton.IsEnabled = !_quitInProgress;
             ConnectButton.Content = "Connect";
             ConnectButton.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(21, 127, 117));
@@ -295,11 +320,14 @@ public partial class MainWindow : Window
         SetStatus(stats.Accepted ? "Connected" : "Rejected",
             stats.Accepted ? "Sending audio: 48 kHz, 16-bit stereo." : "The server rejected this connection. Check its address, shared key, and whether another client is connected.");
         if (!stats.Accepted) return;
+        _latestStats = stats;
+        _latestRttMs = rtt;
         BufferText.Text = $"{stats.BufferMs} ms";
         SinkDelayText.Text = $"{stats.SinkDelayMs} ms";
         RttText.Text = $"{rtt:0.0} ms";
         // Capture period is an estimate; WASAPI does not report actual capture-to-wire delay here.
-        EndToEndText.Text = $"≈ {captureLatencyMs + AudioFrameQueue.TargetBufferMs + Protocol.FrameMs + rtt / 2 + stats.BufferMs + stats.SinkDelayMs:0} ms";
+        _latestEstimatedDelayMs = captureLatencyMs + AudioFrameQueue.TargetBufferMs + Protocol.FrameMs + rtt / 2 + stats.BufferMs + stats.SinkDelayMs;
+        EndToEndText.Text = $"≈ {_latestEstimatedDelayMs:0} ms";
         LostText.Text = stats.Lost.ToString("N0");
         LateText.Text = stats.Late.ToString("N0");
         UnderrunText.Text = stats.Underruns.ToString("N0");
@@ -334,6 +362,8 @@ public partial class MainWindow : Window
 
     private void ResetStats()
     {
+        _latestStats = null;
+        _latestRttMs = _latestEstimatedDelayMs = null;
         foreach (var field in new[] { BufferText, SinkDelayText, RttText, EndToEndText, LostText, LateText, UnderrunText, OverrunText })
             field.Text = "\u2014";
     }
@@ -376,10 +406,28 @@ public partial class MainWindow : Window
         ActivityLog.ScrollToEnd();
     }
 
-    private void CopyLog_Click(object sender, RoutedEventArgs e)
+    private void CopyDiagnostics_Click(object sender, RoutedEventArgs e)
     {
-        try { System.Windows.Clipboard.SetText(ActivityLog.Text); }
+        try
+        {
+            AudioDevice? device = DeviceCombo.SelectedItem is AudioDevice selected ? selected : null;
+            var snapshot = new ClientDiagnosticSnapshot(
+                StatusText.Text,
+                VirtualRadio.IsChecked == true ? CaptureMode.VirtualCable : LoopbackRadio.IsChecked == true ? CaptureMode.Loopback : CaptureMode.Input,
+                (int)LatencySlider.Value, GainSlider.Value,
+                int.TryParse(PortBox.Text, out int udpPort) ? udpPort : 0,
+                int.TryParse(HttpPortBox.Text, out int httpPort) ? httpPort : 0,
+                _latestStats, _latestRttMs, _latestEstimatedDelayMs,
+                StatusText.Text == "Connected" ? _activeClient?.Levels : null);
+            string report = ClientDiagnostics.Format(snapshot, _activity,
+                [ServerBox.Text.Trim(), device?.Id, device?.Name,
+                 Environment.UserName, Environment.MachineName, Environment.UserDomainName,
+                 Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)], PskBox.Password.Trim());
+            System.Windows.Clipboard.SetText(report);
+            AddActivity("Diagnostics copied to the clipboard.");
+        }
         catch (System.Runtime.InteropServices.COMException) { AddActivity("Could not copy: the clipboard is busy. Try again."); }
+        catch (System.Text.RegularExpressions.RegexMatchTimeoutException) { AddActivity("Could not prepare diagnostics safely. Clear the activity log and try again."); }
     }
 
     private void ClearLog_Click(object sender, RoutedEventArgs e) { _activity.Clear(); ActivityLog.Clear(); }

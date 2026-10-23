@@ -209,6 +209,8 @@ class ReleaseVerificationTests(unittest.TestCase):
         with patch.object(release, 'verify_binary', return_value={'frameworks': 'checked separately'}):
             report = release.verify_directory(package, 'linux-x64', source)
         self.assertIn('LICENSE', report['files'])
+        self.assertIn('docs/COMPETITION.md', report['files'])
+        self.assertIn('docs/RELEASING.md', report['files'])
         self.assertIn('deploy/linux/install.sh', report['files'])
 
     def test_missing_installer_is_rejected(self):

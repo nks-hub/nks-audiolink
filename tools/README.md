@@ -3,7 +3,7 @@
 `verify_release.py` checks an AudioLink publish directory or archive. It uses only
 the Python 3.10+ standard library. Run it from a source checkout after publishing
 the binaries and copying the public documentation and licenses. The release
-workflow in [`.github/workflows/release.yml`](../.github/workflows/release.yml)
+workflow in [`.github/workflows/package.yml`](../.github/workflows/package.yml)
 contains the complete staging commands.
 
 On Windows, use `py -3` instead of `python3` if needed.
@@ -18,8 +18,8 @@ python3 tools/verify_release.py publish/linux --platform linux-x64 --create-arch
 # Check a downloaded archive against this source checkout.
 python3 tools/verify_release.py artifacts/nks-audiolink-windows-x64.zip --platform windows-x64
 
-# Run the verifier's regression tests.
-python3 -m unittest discover -s tests -p test_release_verification.py
+# Run package and version/release-metadata regression tests.
+python3 -m unittest discover -s tests -p "test_release*.py"
 ```
 
 Place archive and report outputs outside the publish directory. Archive creation
@@ -32,8 +32,8 @@ and the archive hash when an archive was created.
 
 - Required public files are present and unexpected files are rejected. Public
   documentation, licenses and Linux deployment files must exactly match the
-  supplied source checkout. The default checkout is this script's parent
-  directory; `--repository PATH` selects another one.
+  supplied source checkout. The default is the repository containing this
+  script; `--repository PATH` selects another one.
 - The example server configuration contains no shared key, allows only local
   clients, and disables HTTP by default. Private configuration files are outside
   the package allowlist.
@@ -78,3 +78,17 @@ debug symbols are optional. When adding a public release file:
 When changing the bundled runtime, update the publish SDK/runtime choice,
 third-party license files and notices, the verifier's expected runtime, and its
 tests together. Re-run verification against newly published binaries.
+
+## Version, release notes and build identity
+
+`release_metadata.py` reads the explicit SemVer in `Directory.Build.props`.
+`--tag v0.1.0-rc.1` rejects a mismatch before the release jobs run. The helper
+classifies prereleases, exports validated GitHub Actions outputs, and can write
+the exact dated changelog section with `--notes-file PATH`. Missing, duplicate or
+undated version sections fail validation rather than falling back to commit lists.
+
+The packaging workflow writes a separate `release-build.json` with product
+version, full source commit and archive/report/checksum hashes. It compares each
+archive against its verification report. The publication job recomputes this
+manifest and compares it with the downloaded one before uploading assets. This
+records CI build identity; it is not a signed provenance attestation.

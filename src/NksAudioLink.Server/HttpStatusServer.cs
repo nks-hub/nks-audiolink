@@ -1,4 +1,5 @@
 using System.Net;
+using System.Globalization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -63,9 +64,27 @@ public sealed class HttpStatusServer(ServerConfig config, Func<ServerStatus> sna
         string dashboard = await reader.ReadToEndAsync(cancellationToken);
         app.MapGet("/", () => Results.Content(dashboard, "text/html; charset=utf-8"));
         app.MapGet("/api/stats", () => Results.Json(snapshot()));
+        var history = new StatusHistory();
+        app.MapGet("/api/history", (HttpRequest request) =>
+        {
+            string minutesValue = request.Query["minutes"].ToString();
+            string afterValue = request.Query["after"].ToString();
+            if (!int.TryParse(minutesValue.Length == 0 ? "1" : minutesValue,
+                    NumberStyles.None, CultureInfo.InvariantCulture, out int minutes) || minutes is not (1 or 5 or 15 or 60) ||
+                !long.TryParse(afterValue.Length == 0 ? "0" : afterValue,
+                    NumberStyles.None, CultureInfo.InvariantCulture, out long after))
+                return Results.BadRequest(new { error = "minutes must be 1, 5, 15 or 60; after must be a nonnegative integer." });
+            return Results.Json(history.Read(minutes, after, request.Query["epoch"].ToString(), DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
+        });
         await app.StartAsync(cancellationToken);
         Console.WriteLine($"Server status: http://{config.HttpBindAddress}:{config.HttpPort}/ (read-only)");
-        try { await Task.Delay(Timeout.Infinite, cancellationToken); }
+        try
+        {
+            history.Add(snapshot(), DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+                history.Add(snapshot(), DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+        }
         finally { await app.StopAsync(CancellationToken.None); }
     }
 }

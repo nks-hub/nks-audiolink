@@ -7,6 +7,44 @@ namespace NksAudioLink.Tests;
 
 public class AudioServerTests
 {
+    [Fact]
+    public async Task NativeOutputTotalsSurviveClosedSessionsWhileNewSessionStartsAtZero()
+    {
+        var sinks = new List<DiagnosticSink>();
+        var server = new AudioServer(Config(FreePort()), _ => { var sink = new DiagnosticSink(); sinks.Add(sink); return sink; });
+        using var stop = new CancellationTokenSource();
+        Task running = server.RunAsync(stop.Token);
+        using var udp = Client(server.GetStatus().UdpPort);
+        try
+        {
+            await Send(udp, PacketType.Hello, 1, HelloBody());
+            await Receive(udp, PacketType.Stats);
+            Assert.Equal(default(NativeOutputStatus), server.GetStatus().Session!.NativeOutput);
+            sinks[0].Log.Record(-32, 0);
+            sinks[0].Log.Record(-86, -19);
+            var expected = new NativeOutputStatus(2, 1, 1, 1, 1);
+            Assert.Equal(expected, server.GetStatus().NativeOutput);
+            Assert.Equal(expected, server.GetStatus().Session!.NativeOutput);
+            await Send(udp, PacketType.Bye, 1, []);
+            await Eventually(() => server.GetStatus().Session is null);
+            Assert.Equal(expected, server.GetStatus().NativeOutput);
+            await Send(udp, PacketType.Hello, 2, HelloBody());
+            await Receive(udp, PacketType.Stats, 2);
+            Assert.Equal(default(NativeOutputStatus), server.GetStatus().Session!.NativeOutput);
+            Assert.Equal(expected, server.GetStatus().NativeOutput);
+            sinks[1].Log.Record(-32, 0);
+            Assert.Equal(new NativeOutputStatus(3, 2, 1, 2, 1), server.GetStatus().NativeOutput);
+            sinks[1].FailNextWrite();
+            await Eventually(() => server.GetStatus().Session is null);
+            Assert.Equal(new NativeOutputStatus(4, 2, 2, 2, 1), server.GetStatus().NativeOutput);
+        }
+        finally
+        {
+            stop.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => running.WaitAsync(TimeSpan.FromSeconds(5)));
+        }
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -308,6 +346,23 @@ public class AudioServerTests
         public int DelayMs => 0;
         public void Write(ReadOnlySpan<short> samples) { }
         public void Dispose() => Disposed = true;
+    }
+
+    private sealed class DiagnosticSink : IAudioSink, INativeOutputDiagnostics
+    {
+        private int _failNextWrite;
+        public AlsaRecoveryLog Log { get; } = new(_ => { });
+        public DiagnosticSink() { Log.Record(-32, 0); } // Existing sink count must not leak into the new session baseline.
+        public NativeOutputStatus GetNativeOutputStatus() => Log.GetSnapshot();
+        public int DelayMs => 0;
+        public void FailNextWrite() => Interlocked.Exchange(ref _failNextWrite, 1);
+        public void Write(ReadOnlySpan<short> samples)
+        {
+            if (Interlocked.Exchange(ref _failNextWrite, 0) == 0) return;
+            Log.Record(-19, -19);
+            throw new IOException("Native output recovery failed.");
+        }
+        public void Dispose() { }
     }
 
     private sealed class FailingSink : IAudioSink

@@ -1,6 +1,6 @@
 using System.Diagnostics;
-using System.Reflection;
 using System.Windows;
+using NksAudioLink.Core;
 
 namespace NksAudioLink.App;
 
@@ -9,12 +9,9 @@ public partial class AboutWindow : Window
     public AboutWindow()
     {
         InitializeComponent();
-        var assembly = typeof(AboutWindow).Assembly;
-        string version = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
-            ?? assembly.GetName().Version?.ToString() ?? "unknown";
         // Keep the product version readable; detailed build identity is available on hover.
-        VersionText.Text = $"Version {version.Split('+')[0]}";
-        VersionText.ToolTip = version;
+        VersionText.Text = $"Version {ProductVersion.Display}";
+        VersionText.ToolTip = ProductVersion.Informational;
     }
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();

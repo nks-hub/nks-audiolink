@@ -4,6 +4,7 @@
 .idea/
 *.user
 *.suo
+*_wpftmp.csproj
 *.log
 *.wav
 *.zip

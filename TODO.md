@@ -2,7 +2,7 @@
 
 A phase is checked only after its implementation and required verification are complete.
 
-The 2026-10-23 review adds SDK 9.0.203 compatibility, packet-loss and lifecycle fixes, a borderless desktop UI with icons/About/activity history, and an optional HTTP server dashboard. Local automated coverage now includes 94 portable tests, 27 Windows client/CLI tests and 9 dashboard tests. Core line coverage was remeasured at 90.48% (82.33% branches). See [current review evidence](docs/VALIDATION.md#review-and-development-2026-10-23). Historical phase counts below describe the earlier deployment; the current acceptance checklist records the new verification separately.
+The 2026-10-23 review adds SDK 9.0.203 compatibility, packet-loss and lifecycle fixes, a borderless desktop UI, signal meters, manual buffer presets, redacted diagnostic copy, and an optional HTTP dashboard with one-hour server history. Local automated coverage now includes 106 portable tests, 32 Windows client/CLI tests, 14 dashboard tests and 36 package/version tests. Core line coverage was remeasured at 90.57% (81.38% branches). See [candidate review evidence](docs/VALIDATION.md#release-candidate-verification-2026-10-23). Historical phase counts below describe the earlier deployment; the current acceptance checklist records the new verification separately.
 
 - [x] 0. Solution scaffold, local build and tests, public GitHub repository, and passing Windows/Linux CI. Verified on 2026-10-02.
 - [x] 1. Core protocol, HMAC, jitter buffer, resampling and clock drift tests. The portable Core/server/queue suite has 39 passing tests; Core line coverage is 86.93%. Drift simulation covers ±200 ppm over ten minutes of virtual time.
@@ -17,6 +17,12 @@ The 2026-10-23 review adds SDK 9.0.203 compatibility, packet-loss and lifecycle 
 
 ## Current acceptance checklist
 
+- [ ] Deliver version `0.1.0-rc.1` with a dated changelog, consistent app/API/CLI version reporting and verified binary artifacts from successful main-branch CI. Keep the remaining human checks explicit in the candidate release.
+- [x] Store the last hour of numeric monitoring history on the server, restore charts after browser refresh and offer 1/5/15/60-minute ranges. Memory history is bounded and contains no audio or credentials; restart clears it.
+- [x] Show native ALSA output errors/recoveries separately from network/jitter counters in the HTTP API and dashboard, retaining closed-session errors in lifetime totals.
+- [x] Add a client diagnostic-copy action with version, safe settings, current measurements and recent events; exclude shared keys and redact identifying addresses/device labels.
+- [x] Add manual 20/40/80 ms buffer presets with a custom value, preserving the 30 ms initial default and saved settings; verify compiled handlers and minimum-window layout.
+- [x] Expand the primary-source competitor comparison into [COMPETITION.md](docs/COMPETITION.md), connecting findings to implemented work, acceptance checks and separately scoped future features.
 - [x] Merge the newer upstream README and MIT licensing changes; update About and the package workflow to include the MIT notice.
 - [x] Rerun portable and Windows client tests, including sender recovery after a scheduler discontinuity; remeasure Core coverage above 80%.
 - [x] Verify actual WASAPI capture through an isolated ten-second UDP outage, owned receiver restart and a 200 ms sender pause. These tests do not substitute for physically unplugging the cable or suspending Windows.

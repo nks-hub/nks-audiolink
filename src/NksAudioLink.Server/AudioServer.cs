@@ -25,6 +25,9 @@ public sealed class AudioServer
         public uint Id { get; } = id;
         public PlayoutEngine Engine { get; } = engine;
         public IAudioSink Sink { get; } = sink;
+        public NativeOutputStatus? NativeBaseline { get; } = (sink as INativeOutputDiagnostics)?.GetNativeOutputStatus();
+        public NativeOutputStatus? NativeStatus => Sink is INativeOutputDiagnostics diagnostics
+            ? diagnostics.GetNativeOutputStatus() - NativeBaseline.GetValueOrDefault() : null;
         public AudioLevelMeter Levels { get; } = new();
         public long LastPacketTick { get; set; } = Stopwatch.GetTimestamp();
         public long StartedTick { get; } = Stopwatch.GetTimestamp();
@@ -47,6 +50,7 @@ public sealed class AudioServer
     private readonly byte[]? _key;
     private readonly CidrRange[] _allow;
     private long _startedTick = Stopwatch.GetTimestamp();
+    private NativeOutputStatus _closedNativeOutput;
 
     public ServerStatus GetStatus()
     {
@@ -61,12 +65,13 @@ public sealed class AudioServer
                     Math.Round(Stopwatch.GetElapsedTime(active.LastPacketTick).TotalMilliseconds, 1),
                     stats.BufferMs, Volatile.Read(ref active.SinkDelayMs), stats.RatioPpm,
                     stats.Lost, stats.Late, stats.Underruns, stats.Overruns, stats.Duplicates,
-                    active.Levels.GetSnapshot());
+                    active.Levels.GetSnapshot(), active.NativeStatus);
             }
             return new ServerStatus(config.Name,
-                typeof(AudioServer).Assembly.GetName().Version?.ToString(3) ?? "unknown",
+                ProductVersion.Display,
                 (long)Stopwatch.GetElapsedTime(_startedTick).TotalSeconds, config.Port,
-                Protocol.SampleRate, Protocol.Channels, 16, session);
+                Protocol.SampleRate, Protocol.Channels, 16, session,
+                _closedNativeOutput + (session?.NativeOutput ?? default));
         }
     }
 
@@ -315,6 +320,7 @@ public sealed class AudioServer
             if (!_session.Closed)
             {
                 _session.Closed = true;
+                _closedNativeOutput += _session.NativeStatus ?? default;
                 ReleaseIdleSink();
                 if (releaseNow) DisposeSink(_session.Sink);
                 else

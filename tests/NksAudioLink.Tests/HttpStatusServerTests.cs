@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Net.Sockets;
+using System.Reflection;
 using System.Text.Json;
 using NksAudioLink.Core;
 using NksAudioLink.Server;
@@ -9,6 +10,60 @@ namespace NksAudioLink.Tests;
 
 public class HttpStatusServerTests
 {
+    [Fact]
+    public async Task DisabledHttpDoesNotSampleOrAllocateHistoryWork()
+    {
+        int reads = 0;
+        using var stop = new CancellationTokenSource();
+        Task running = new HttpStatusServer(new ServerConfig(), () => { Interlocked.Increment(ref reads); throw new InvalidOperationException(); }).RunAsync(stop.Token);
+        await Task.Delay(50);
+        Assert.Equal(0, reads);
+        stop.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => running);
+    }
+
+    [Fact]
+    public async Task HistorySurvivesNewBrowserRequestsAndValidatesItsBoundedReadOnlyQuery()
+    {
+        int port = FreeTcpPort();
+        var config = new ServerConfig { HttpPort = port, PskBase64 = Convert.ToBase64String(new byte[32]), Name = "private-name" };
+        var status = new AudioServer(config);
+        using var stop = new CancellationTokenSource();
+        Task running = new HttpStatusServer(config, status.GetStatus).RunAsync(stop.Token);
+        using var http = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}/") };
+        try
+        {
+            using var ready = await GetWhenReady(http, "api/history");
+            await Task.Delay(1100);
+            var first = (await http.GetFromJsonAsync<StatusHistoryResponse>("api/history?minutes=60"))!;
+            Assert.InRange(first.Samples.Length, 2, 4);
+            Assert.All(first.Samples, sample => Assert.Null(sample.Session));
+            var incremental = (await http.GetFromJsonAsync<StatusHistoryResponse>($"api/history?minutes=60&after={first.NextSequence}&epoch={first.Epoch}"))!;
+            Assert.False(incremental.Reset);
+            Assert.All(incremental.Samples, sample => Assert.True(sample.Sequence > first.NextSequence));
+            // A new browser has no cursor; it still sees samples collected earlier.
+            var refresh = (await http.GetFromJsonAsync<StatusHistoryResponse>("api/history?minutes=60"))!;
+            Assert.Equal(first.Epoch, refresh.Epoch);
+            Assert.Equal(first.Samples[0], refresh.Samples[0]);
+            string json = await http.GetStringAsync("api/history");
+            Assert.DoesNotContain(config.Name, json);
+            Assert.DoesNotContain(config.PskBase64, json);
+            Assert.DoesNotContain("127.0.0.1", json);
+            foreach (string query in new[] { "minutes=0", "minutes=2", "minutes=61", "minutes=999999999999", "after=-1", "after=abc", "after=9223372036854775808" })
+            {
+                using var invalid = await http.GetAsync("api/history?" + query);
+                Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+            }
+            using var write = await http.PostAsync("api/history", null);
+            Assert.Equal(HttpStatusCode.MethodNotAllowed, write.StatusCode);
+        }
+        finally
+        {
+            stop.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => running.WaitAsync(TimeSpan.FromSeconds(5)));
+        }
+    }
+
     [Fact]
     public async Task DashboardAndApiReportActualSessionAndClearItAfterBye()
     {
@@ -31,6 +86,8 @@ public class HttpStatusServerTests
             var idle = await http.GetFromJsonAsync<ServerStatus>("api/stats");
             Assert.NotNull(idle);
             Assert.Equal(config.Name, idle.Name);
+            string expectedVersion = typeof(AudioServer).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion.Split('+')[0];
+            Assert.Equal(expectedVersion, idle.Version);
             Assert.Null(idle.Session);
 
             byte[] hello = new byte[74];

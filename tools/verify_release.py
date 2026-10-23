@@ -30,6 +30,7 @@ SIGNATURE = bytes.fromhex('8b1202b96a612038727b930214d7a03213f5b9e6efae3318ee3b2
 PUBLIC_FILES = {
     'README.md', 'LICENSE', 'TODO.md', 'CHANGELOG.md', 'THIRD_PARTY_NOTICES.md',
     'docs/INSTALL.md', 'docs/PROTOCOL.md', 'docs/VALIDATION.md', 'docs/WINDOWS.md',
+    'docs/COMPETITION.md', 'docs/RELEASING.md',
     'docs/screenshots/client.png', 'docs/screenshots/client-preview.png',
     'docs/screenshots/server-dashboard.png',
 }

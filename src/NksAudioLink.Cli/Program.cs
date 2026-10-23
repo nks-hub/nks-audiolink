@@ -11,9 +11,15 @@ using NksAudioLink.Core;
 
 try
 {
+    if (args is ["--version", ..])
+    {
+        Console.WriteLine($"NKS AudioLink CLI {ProductVersion.Informational}");
+        return;
+    }
     if (args.Length == 0 || args[0] is "help" or "--help")
     {
         Console.WriteLine("NKS AudioLink commands:");
+        Console.WriteLine("NksAudioLink.Cli.exe --version");
         Console.WriteLine("NksAudioLink.Cli.exe devices");
         Console.WriteLine("NksAudioLink.Cli.exe discover [--port PORT] [--config FILE]");
         Console.WriteLine("NksAudioLink.Cli.exe send --server HOST [--port PORT] [--latency MS] [--mode loopback|capture] [--device ID] [--seconds N] [--gain 0..4] [--takeover true|false] [--config FILE]");

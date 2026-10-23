@@ -1,5 +1,23 @@
 # Validation
 
+## Release candidate verification, 2026-10-23
+
+The `0.1.0-rc.1` source adds server-owned numeric history, separate native output counters, safe client diagnostic copy, manual buffer presets and consistent product version reporting. The following checks were repeated after these changes; earlier physical measurements below retain their original scope.
+
+| Check | Candidate evidence |
+|---|---|
+| Release build | All seven projects built successfully with zero warnings and errors using SDK 9.0.203. |
+| Automated .NET tests | 106 portable tests and 32 Windows client/CLI tests passed together. History bounds, range/cursor/epoch resets, native-counter lifetime, diagnostic redaction and version subprocess behavior are included. |
+| Core coverage | Portable-suite Cobertura measured 90.57% lines and 81.38% branches, above the 80% line gate. |
+| Dashboard | All 14 Node tests passed. Chromium against actual local Kestrel plus controlled fixtures verified refresh recovery, incremental history, range changes, session gaps, pause/offline/403 recovery, retained closed-session native totals and 320 px layout without JavaScript errors or external requests. |
+| Desktop | Compiled preset handlers preserved saved values including 30/35/40/80/155/199 ms and correctly selected 20/40/80 ms. Custom and disabled states passed without invoking capture, networking or settings writes. Native layout/focus checks passed at 960×720 and 800×640. |
+| Package and version helpers | All 36 Python tests passed, covering strict package validation, deterministic archive creation, SemVer/tag matching, changelog selection and build manifests. All three workflows passed actionlint 1.7.12. |
+| Independent source review | Diagnostic fields/redaction, bounded history, access controls, asynchronous request cancellation and native-counter lifetime were reviewed without an actionable defect. |
+
+History is memory-only, limited to 3,600 one-second numeric samples, and collected only while HTTP is enabled. It survives browser refresh but clears on server restart. The HTTP suggestion remains TCP **7356**, never 8080. Client diagnostics contain no audio or shared key and require an explicit clipboard click.
+
+The earlier 600.002-second hardware pass predates the history sampler and extended HTTP native-counter reporting. It is evidence for the output scheduling fix, not a hardware acceptance measurement of these new additions. Listening synchronization and physical cable recovery remain pending. Tagged CI and subsequent deployment evidence are recorded separately when available.
+
 ## Review and development, 2026-10-23
 
 The reported NETSDK1141 was reproduced with the installed SDK 9.0.203: `global.json` required 9.0.318 with `latestPatch`. Local selection now permits stable SDK 9.0.203 or later within 9.0 (`latestFeature`). CI explicitly selects both the minimum and release SDK; release packaging explicitly selects 9.0.318. Revision `7c33f7c`, including the final meter-reset and scheduling fixes, passed the [Windows/Linux CI matrix](https://github.com/nks-hub/nks-audiolink/actions/runs/39938086483) and the [manual release-artifact workflow](https://github.com/nks-hub/nks-audiolink/actions/runs/39938088133). The latter built and verified both archives without publishing a tagged release.

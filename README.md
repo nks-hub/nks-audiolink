@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/nks-hub/nks-audiolink/actions/workflows/ci.yml/badge.svg)](https://github.com/nks-hub/nks-audiolink/actions/workflows/ci.yml)
 [![Release build](https://github.com/nks-hub/nks-audiolink/actions/workflows/release.yml/badge.svg)](https://github.com/nks-hub/nks-audiolink/actions/workflows/release.yml)
-[![Version](https://img.shields.io/badge/version-0.1.0-orange.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.1.0--rc.1-orange.svg)](CHANGELOG.md)
 [![.NET 9](https://img.shields.io/badge/.NET-9-512BD4.svg)](https://dotnet.microsoft.com/)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%2B%20Linux-0078D4.svg)](#how-it-works)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -22,7 +22,8 @@ Disconnected interface preview rendered without opening audio devices. The optio
 - ⏱️ **Timing and recovery** - a jitter buffer absorbs short variations in packet arrival. Clock drift correction and silent frames keep the audio timeline running. The client reconnects after server outages and recreates capture after a device error.
 - 📊 **Controls and statistics** - server discovery, target buffer, live gain adjustment, a system tray menu and statistics for buffer fill, output queue delay, network RTT, lost and late frames, underruns and overruns.
 - 🖥️ **Desktop and web monitoring** - a compact borderless Windows app with a waveform icon, About and activity log; an optional read-only server dashboard with buffer history and a JSON statistics API on a separately configured HTTP port (suggested: 7356).
-- 🎚️ **Stereo signal meters** - actual PCM RMS levels, held peaks and clipping indicators in the client and server dashboard. The web monitor includes a 60-sample stereo level history.
+- 🎚️ **Stereo signal meters** - actual PCM RMS levels, held peaks and clipping indicators in the client and server dashboard. Server history retains up to one hour of signal, buffer and error measurements, with 1/5/15/60-minute graphs that survive page refresh.
+- 🛠️ **Practical diagnostics** - manual 20/40/80 ms buffer presets, custom values, a redacted client diagnostic report, and separate native ALSA recovery counters.
 - 🔒 **Access control** - `allowCidrs` restricts client addresses. An optional shared key authenticates packets with HMAC. Audio is not encrypted.
 
 [VB-CABLE](https://vb-audio.com/Cable/) is a separate VB-Audio driver. AudioLink does not bundle it; ordinary WASAPI loopback capture does not require it.
@@ -40,7 +41,9 @@ Disconnected interface preview rendered without opening audio devices. The optio
 
 ### Portable packages
 
-Tagged releases will provide `nks-audiolink-windows-x64.zip` and `nks-audiolink-linux-x64.tar.gz` on [GitHub Releases](https://github.com/nks-hub/nks-audiolink/releases). Both include .NET runtime 9.0.20, so the target machines do not need a separate runtime installation. The Windows archive contains `NksAudioLink.App.exe` and the CLI in `cli/`.
+Version **0.1.0-rc.1** is the release candidate for the current review. Tagged builds provide `nks-audiolink-windows-x64.zip` and `nks-audiolink-linux-x64.tar.gz` on [GitHub Releases](https://github.com/nks-hub/nks-audiolink/releases). Both include .NET runtime 9.0.20, so the target machines do not need a separate runtime installation. The Windows archive contains `NksAudioLink.App.exe` and the CLI in `cli/`.
+
+Successful pushes to `main` also produce both verified binary packages as downloadable artifacts in [CI](https://github.com/nks-hub/nks-audiolink/actions/workflows/ci.yml). Release candidates are marked **Pre-release**; the remaining subjective synchronization and physical cable checks are listed in [TODO.md](TODO.md). See [versioning and release instructions](docs/RELEASING.md) for the difference between CI artifacts, release candidates and stable releases.
 
 From the extracted Linux package, run the installer in a root shell:
 
@@ -75,6 +78,8 @@ The server accepts one active session. The default UDP port is `7355`. With its 
 | UDP protocol | [docs/PROTOCOL.md](docs/PROTOCOL.md) |
 | Tests, measurements and their limits | [docs/VALIDATION.md](docs/VALIDATION.md) |
 | Progress and changes | [TODO.md](TODO.md) · [CHANGELOG.md](CHANGELOG.md) |
+| Versioning, CI binaries and releases | [docs/RELEASING.md](docs/RELEASING.md) |
+| Competitor comparison and development priorities | [docs/COMPETITION.md](docs/COMPETITION.md) |
 
 ## Development
 
@@ -100,7 +105,7 @@ dotnet publish src/NksAudioLink.Server/NksAudioLink.Server.csproj \
 
 | Check | Result and scope |
 |---|---|
-| Automated tests | The 2026-10-23 review passed 94 portable Core/server/HTTP/queue/meter tests, 27 Windows client/CLI tests, 9 dashboard tests and 22 package-verifier tests. Current Core coverage is **90.48% of lines** and **82.33% of branches**. |
+| Automated tests | The 2026-10-23 candidate review passed 106 portable Core/server/HTTP/queue/meter tests, 32 Windows client/CLI tests, 14 dashboard tests and 36 package/version/release-note tests. Core coverage from the portable suite is **90.57% of lines** and **81.38% of branches**. |
 | LAN and physical ALSA | The .NET 9.0.20 server and Windows client ran for **600 seconds with a 30 ms target buffer**. All 60 client samples showed zero lost or late frames, underruns and overruns. ALSA was RUNNING in all 120 samples; the server process and session remained unchanged. A separate 10 ms run accumulated late frames. |
 | Tone and virtual mode | A 440 Hz Windows-to-Linux WAV test lasted 5.095 seconds with RMS 8,484 and no overruns or late frames. CABLE Input to CABLE Output transport was also confirmed by WAV analysis. |
 | UI latency estimate | One live observation was **about 74 ms**: 10 ms WASAPI capture, about 15 ms client queue, a 5 ms frame, about 0.25 ms half-RTT, 25 ms server buffer and 19 ms ALSA queue delay. This is a sum of known stages, not a physical end-to-end measurement. |
@@ -121,16 +126,11 @@ Contributions are welcome! For major changes, please open an issue first.
 
 ## Alternatives and scope
 
-This comparison was checked against upstream documentation on 2026-10-23. It compares functionality, not measured latency or sound quality on identical hardware.
+The [detailed comparison and action matrix](docs/COMPETITION.md) covers Scream, Snapcast, VBAN/Voicemeeter and SonoBus, with primary-source links checked on 2026-10-23. It compares capture/driver setup, formats, routing, monitoring and licensing. No competitor latency or recovery benchmark was performed.
 
-| Project | Main use | Difference relevant to AudioLink |
-|---|---|---|
-| NKS AudioLink | One Windows source to one Linux ALSA output | WASAPI loopback needs no additional virtual driver; optional VB-CABLE routing, recovery, and local desktop/web diagnostics. Fixed 48 kHz, 16-bit stereo; no synchronized multiroom playback. |
-| [Scream](https://github.com/duncanthrax/scream) | A Windows virtual sound device sending PCM over the network | Uses a virtual device driver and supports multicast or unicast. Its Unix receiver supports ALSA, PulseAudio and JACK. Driver deployment is an extra setup step compared with AudioLink loopback. |
-| [Snapcast](https://github.com/snapcast/snapcast) | Synchronized multiroom playback | Organizes sources and groups of time-synchronized receivers. Prefer this architecture when several rooms must play together; AudioLink focuses on a single receiver. |
-| [VBAN / Voicemeeter](https://vb-audio.com/Voicemeeter/vban.htm) | Audio routing and network streams within a broader mixer ecosystem | VBAN provides a public UDP protocol with multiple sample formats/rates and multichannel audio. AudioLink offers a smaller fixed-format Windows-to-ALSA workflow and uses its own incompatible wire protocol. See the [VBAN specification](https://vb-audio.com/Voicemeeter/VBANProtocol_Specifications.pdf). |
+AudioLink focuses on one Windows source and one Linux ALSA receiver: WASAPI loopback without an additional virtual driver, fixed 48 kHz/16-bit stereo, recovery and desktop/web diagnostics. [Scream](https://github.com/duncanthrax/scream) provides a virtual network sound device; [Snapcast](https://github.com/snapcast/snapcast) targets synchronized multiroom playback; [VBAN](https://vb-audio.com/Voicemeeter/vban.htm) serves broader mixer/routing workflows; [SonoBus](https://sonobus.net/) supports peer-to-peer audio collaboration.
 
-The practical development priorities are reliable recovery, clear diagnostics, straightforward setup and honest latency reporting. Multicast, multiroom synchronization, per-application capture, additional formats and interoperable transports are separate future features; they are not implied by the new dashboard.
+The comparison separates completed SDK, audio recovery, UI, meter and packaging work from the two remaining physical acceptance checks and candidate publication. Multiroom synchronization, per-application capture, additional formats and interoperable transports remain separate product decisions, not features implied by the dashboard.
 
 ## Support
 
