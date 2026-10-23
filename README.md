@@ -100,14 +100,14 @@ dotnet publish src/NksAudioLink.Server/NksAudioLink.Server.csproj \
 
 | Check | Result and scope |
 |---|---|
-| Automated tests | The 2026-10-23 review passed 80 portable Core/server/HTTP/queue/meter tests, 26 Windows client/CLI tests, 9 dashboard tests and 22 package-verifier tests. Current Core coverage is **90.48% of lines** and **82.33% of branches**. |
+| Automated tests | The 2026-10-23 review passed 94 portable Core/server/HTTP/queue/meter tests, 27 Windows client/CLI tests, 9 dashboard tests and 22 package-verifier tests. Current Core coverage is **90.48% of lines** and **82.33% of branches**. |
 | LAN and physical ALSA | The .NET 9.0.20 server and Windows client ran for **600 seconds with a 30 ms target buffer**. All 60 client samples showed zero lost or late frames, underruns and overruns. ALSA was RUNNING in all 120 samples; the server process and session remained unchanged. A separate 10 ms run accumulated late frames. |
 | Tone and virtual mode | A 440 Hz Windows-to-Linux WAV test lasted 5.095 seconds with RMS 8,484 and no overruns or late frames. CABLE Input to CABLE Output transport was also confirmed by WAV analysis. |
 | UI latency estimate | One live observation was **about 74 ms**: 10 ms WASAPI capture, about 15 ms client queue, a 5 ms frame, about 0.25 ms half-RTT, 25 ms server buffer and 19 ms ALSA queue delay. This is a sum of known stages, not a physical end-to-end measurement. |
 | Measured LAN stage | Nine clicks took **22.96–37.88 ms**, median **31.39 ms**, from the Windows UDP send call to a Linux WAV write. This excludes WASAPI capture, ALSA playback and the receiver. |
 | Server CPU | The 600-second physical ALSA run at 30 ms used **1.262% of one CPU core**, compared with about 3% before tuning. An isolated null-output test used 1.40%. |
 
-The owner previously confirmed clean playback on the receiver. The physical ALSA/latency figures above are from the earlier 2026-10-02 run. The 2026-10-23 review reproduced and fixed a Windows sleep/resume socket failure, then verified automatic reconnection after real S3. A newer ten-minute run at a 40 ms target used 1.182% of one core but recorded one underrun; it is not a zero-error acceptance pass. Video synchronization and physical network disconnection remain unverified. [Validation details](docs/VALIDATION.md) distinguish measurements from estimates; [TODO.md](TODO.md) tracks the remaining phases.
+The owner previously confirmed clean playback on the receiver. The physical ALSA/latency figures above are from the earlier 2026-10-02 run. The 2026-10-23 review reproduced and fixed a Windows sleep/resume socket failure, then verified automatic reconnection after real S3. A newer ten-minute run at a 40 ms target used 1.182% of one core but recorded one underrun; it is not a zero-error acceptance pass. The review subsequently fixed skipped output deadlines and added native ALSA recovery logging; a fresh uninterrupted hardware run remains pending. Video synchronization and physical network disconnection remain unverified. [Validation details](docs/VALIDATION.md) distinguish measurements from estimates; [TODO.md](TODO.md) tracks the remaining phases.
 
 ## Contributing
 

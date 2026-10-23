@@ -14,6 +14,8 @@ The compact borderless window has its own minimize, maximize/restore, and close 
 
 The activity log keeps a bounded history of status changes for the current app session and can be copied for troubleshooting. It is not a recording of the audio stream. Live statistics are cleared when the connection ends or becomes unavailable. **Open server monitor** opens the server's optional HTTP monitor using its separate HTTP port, initially **7356**; [enable the server dashboard](INSTALL.md#optional-server-dashboard) first. UDP audio continues to use port 7355.
 
+The displayed underruns and overruns are server jitter-buffer counters. Native sound-card recoveries are recorded separately in the Linux server journal; zero displayed counters alone do not prove uninterrupted physical playback.
+
 **Sent level** shows separate left/right RMS bars in dBFS, one-second held peak markers and a clipping indicator. It measures actual PCM after the client gain adjustment and before UDP transmission; it does not measure the receiver's analog output. RMS uses a 300 ms window. Silent packets let the meters decay, and a stopped stream clears them. The visible client updates these meters every 50 ms; hidden/minimized windows stop UI polling. Gain and both meters stay visible above the footer even when the setup area scrolls.
 
 ## Audio modes
