@@ -14,9 +14,9 @@ Verification decodes the media and checks all flash frames, exact PCM round-trip
 
 To assess the actual link:
 
-1. Connect AudioLink using the intended capture/output mode and the 30 ms target buffer. Confirm the receiver plays the PC's selected output.
+1. Connect AudioLink using the intended capture/output and buffer modes. For the fixed 30 ms baseline, select **Manual** and set 30 ms. To assess **Adaptive**, leave it enabled and let the live target settle; its manual timing controls are intentionally hidden. Confirm the receiver plays the PC's selected output.
 2. Open the MKV in a player with audio synchronization correction set to zero. Start with a comfortable receiver volume, then play the reference while viewing the PC display and listening to the actual receiver.
-3. Record whether each click appears synchronized with its flash, or whether sound consistently leads/lags. Include the player, display, receiver/output path, target buffer and app latency estimate. Playback/display processing and viewing/listening position affect this observation.
+3. Record whether each click appears synchronized with its flash, or whether sound consistently leads/lags. Include the player, display, receiver/output path, buffer mode, observed target and app latency estimate. In Adaptive mode, record the target at the start and end and any changes visible in its graph; do not report the saved manual value as the active target. Playback/display processing and viewing/listening position affect this observation.
 4. Keep the result pending until a person observes it. A generated file or a passing verifier is not a synchronization pass and is not a physical end-to-end measurement.
 
 To recheck an existing primary file:
