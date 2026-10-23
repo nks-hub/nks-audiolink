@@ -1,13 +1,13 @@
 # Versioning and releases
 
-The product version is set once in [Directory.Build.props](../Directory.Build.props). The current candidate is **0.1.0-rc.1**. Builds of Core, client, desktop, CLI and server use this version.
+The product version is set once in [Directory.Build.props](../Directory.Build.props). The current candidate is **0.1.0-rc.2**. Builds of Core, client, desktop, CLI and server use this version. The published RC1 tag and assets remain unchanged.
 
 Desktop About and the HTTP monitor retain the prerelease suffix. About's version tooltip and `NksAudioLink.Cli.exe --version` / `NksAudioLink.Server --version` also expose the informational build identity, including commit metadata when supplied by the build. Assembly/file versions are numeric .NET metadata and cannot represent `-rc.1`; use the product version when identifying a release.
 
 ## Version and tag policy
 
 - Use `MAJOR.MINOR.PATCH` product versions and `-rc.N` for release candidates. The matching Git tag adds only a `v` prefix: `0.1.0-rc.1` → `v0.1.0-rc.1`.
-- Each published candidate is immutable. Further changes require a new candidate such as `0.1.0-rc.2`; do not move a published tag or replace its assets with binaries from another commit.
+- Each published candidate is immutable. Further changes require a new candidate such as `0.1.0-rc.3`; do not move a published tag or replace its assets with binaries from another commit.
 - Promote to `0.1.0` only after the acceptance gates below pass. Subsequent compatible fixes advance the patch version; new functionality advances the minor version. Document any breaking changes explicitly, especially while the project remains below 1.0.
 - Use Conventional Commits for reviewable changes. A source commit identifies an iteration; a version tag identifies a published product candidate or stable release. Commit metadata does not prove that a developer's working tree was clean, so published artifacts come from CI checkouts.
 
@@ -42,8 +42,8 @@ Before tag publication, the workflow recomputes and checks the build manifest. R
 4. Create an annotated tag on the verified commit and push that tag. For example, replace `VERIFIED_COMMIT` with the exact reviewed commit hash:
 
    ```sh
-   git tag -a v0.1.0-rc.1 VERIFIED_COMMIT -m "NKS AudioLink 0.1.0-rc.1"
-   git push origin v0.1.0-rc.1
+   git tag -a v0.1.0-rc.2 VERIFIED_COMMIT -m "NKS AudioLink 0.1.0-rc.2"
+   git push origin v0.1.0-rc.2
    ```
 
 5. Check that the tag workflow passes, publishes both platforms and labels the candidate as a prerelease. Archive the workflow link and hashes with the validation evidence.

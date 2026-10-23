@@ -17,6 +17,9 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
     internal AudioStreamClient(ClientConfig config, Func<string?, bool, IAudioSource> sourceFactory,
         Func<IClientDatagramSocket> socketFactory) : this(config, sourceFactory) => _socketFactory = socketFactory;
     private double _gain = config.Gain;
+    private int _muted = config.Muted ? 1 : 0;
+    private int _limiterEnabled = config.LimiterEnabled ? 1 : 0;
+    private int _processingLatencyMs;
     public double Gain
     {
         get => Volatile.Read(ref _gain);
@@ -26,12 +29,25 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
             Volatile.Write(ref _gain, value);
         }
     }
+    /// <summary>Live mute with a 5 ms ramp; the selected Gain is preserved.</summary>
+    public bool Muted
+    {
+        get => Volatile.Read(ref _muted) != 0;
+        set => Volatile.Write(ref _muted, value ? 1 : 0);
+    }
+    public bool LimiterEnabled
+    {
+        get => Volatile.Read(ref _limiterEnabled) != 0;
+        set => Volatile.Write(ref _limiterEnabled, value ? 1 : 0);
+    }
+    /// <summary>Maximum DSP delay, including a limiter transition back to bypass.</summary>
+    public int ProcessingLatencyMs => LimiterEnabled ? 1 : Volatile.Read(ref _processingLatencyMs);
     public event Action<StatsMessage, double>? StatsReceived;
     public event Action<string>? StateChanged;
     private double _captureLatencyMs = 10;
     public double CaptureLatencyMs => Volatile.Read(ref _captureLatencyMs);
     private readonly AudioLevelMeter _levelMeter = new();
-    /// <summary>Levels of the post-gain PCM payload submitted to UDP, not receiver output.</summary>
+    /// <summary>Levels of the post-gain/mute/limiter PCM submitted to UDP, not receiver output.</summary>
     public AudioLevelSnapshot Levels => _levelMeter.GetSnapshot();
 
     private sealed class CaptureDeviceException(Exception inner) : Exception("The audio device stopped providing data. Check its connection.", inner);
@@ -41,7 +57,7 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
     {
         _levelMeter.Reset();
         try { await RunCoreAsync(deviceId, loopback, cancellationToken, takeover); }
-        finally { _levelMeter.Reset(); }
+        finally { _levelMeter.Reset(); Volatile.Write(ref _processingLatencyMs, 0); }
     }
 
     private async Task RunCoreAsync(string? deviceId, bool loopback, CancellationToken cancellationToken, bool takeover)
@@ -80,6 +96,7 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
     private async Task RunSessionAsync(string? deviceId, bool loopback, CancellationToken cancellationToken, bool takeover)
     {
         config.Validate();
+        var outputProcessor = new PcmOutputProcessor(Gain, Muted, LimiterEnabled);
         using var runStop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         CancellationToken runToken = runStop.Token;
         IPAddress address = (await Dns.GetHostAddressesAsync(config.Server, cancellationToken))
@@ -110,6 +127,7 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
         byte[] packet = new byte[Protocol.MaxDatagramSize];
         byte[] body = new byte[AudioMessage.PrefixSize + Protocol.PcmBytesPerFrame];
         int accepted = 0;
+        int resetProcessing = 1;
         object connectionGate = new();
         int takeoverPending = takeover ? 1 : 0;
         long lastStatsTick = 0;
@@ -126,7 +144,7 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
 
         int WriteHello() => new HelloMessage(48000, 2, 1, 5, (ushort)config.EffectiveInitialLatencyMs,
             Environment.MachineName, config.AdaptiveBuffer
-                ? new AdaptiveBufferOptions(config.AdaptiveMinLatencyMs, config.AdaptiveMaxLatencyMs) : null).Write(body);
+                ? new AdaptiveBufferOptions(config.AdaptiveMinLatencyMs, config.AdaptiveMaxLatencyMs, Predictive: true) : null).Write(body);
 
         async Task SendHelloAsync()
         {
@@ -151,6 +169,7 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
             lock (connectionGate)
             {
                 previous = Interlocked.Exchange(ref accepted, 0);
+                Volatile.Write(ref resetProcessing, 1);
                 _levelMeter.Reset();
             }
             if (previous == 1) StateChanged?.Invoke("Waiting for server");
@@ -181,6 +200,7 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
                         // adaptive policy; an ordinary acceptance is not an acknowledgment.
                         if (stats.Accepted && config.AdaptiveBuffer &&
                             (stats.AdaptiveBuffer is not { } adaptive ||
+                             !adaptive.Predictive ||
                              adaptive.MinimumMs != config.AdaptiveMinLatencyMs ||
                              adaptive.MaximumMs != config.AdaptiveMaxLatencyMs))
                             throw new ServerRejectedException(RejectReason.UnsupportedFormat, adaptiveBuffer: true);
@@ -192,6 +212,7 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
                             if (previous != next)
                             {
                                 _levelMeter.Reset();
+                                Volatile.Write(ref resetProcessing, 1);
                                 if (next == 1) source.Queue.Clear();
                             }
                             lastStatsTick = Stopwatch.GetTimestamp();
@@ -270,36 +291,41 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
                             if (accepted == 1 && (lastStatsTick == 0 || Stopwatch.GetElapsedTime(lastStatsTick) > TimeSpan.FromSeconds(3)))
                             {
                                 timedOut = Interlocked.Exchange(ref accepted, 0) == 1;
+                                Volatile.Write(ref resetProcessing, 1);
                                 _levelMeter.Reset();
                             }
                         }
                         if (timedOut) StateChanged?.Invoke("Waiting for server");
-                        if (Volatile.Read(ref accepted) == 1)
+                        // Capture read, DSP state, metering and submission share the
+                        // connection boundary: an old delayed frame cannot cross a
+                        // disconnect/reaccept transition or repopulate a reset meter.
+                        lock (connectionGate)
                         {
-                            bool hasAudio = source.Queue.TryReadFrame(body.AsSpan(AudioMessage.PrefixSize, Protocol.PcmBytesPerFrame));
-                            double gain = Gain;
-                            if (hasAudio && gain != 1)
+                            if (accepted == 1)
                             {
-                                for (int i = AudioMessage.PrefixSize; i < body.Length; i += 2)
-                                {
-                                    int scaled = (int)Math.Round(BinaryPrimitives.ReadInt16LittleEndian(body.AsSpan(i)) * gain);
-                                    BinaryPrimitives.WriteInt16LittleEndian(body.AsSpan(i), (short)Math.Clamp(scaled, short.MinValue, short.MaxValue));
-                                }
+                                bool hasAudio = source.Queue.TryReadFrame(body.AsSpan(AudioMessage.PrefixSize, Protocol.PcmBytesPerFrame));
+                                var pcm = body.AsSpan(AudioMessage.PrefixSize, Protocol.PcmBytesPerFrame);
+                                if (!hasAudio) pcm.Clear();
+                                double gain = Gain;
+                                bool muted = Muted, limiterEnabled = LimiterEnabled;
+                                if (Interlocked.Exchange(ref resetProcessing, 0) != 0)
+                                    outputProcessor.Reset(gain, muted, limiterEnabled);
+                                // Silence must still advance ramps/release and drain delayed
+                                // limiter PCM. Never discard that tail using the capture flag.
+                                bool processedAudio = outputProcessor.ProcessPcm16(pcm, gain, muted, limiterEnabled);
+                                Volatile.Write(ref _processingLatencyMs,
+                                    outputProcessor.LatencyFrames * 1000 / Protocol.SampleRate);
+                                // Effect-produced silence can omit PCM. Fully bypassed
+                                // capture retains the original packet representation.
+                                bool effectsActive = muted || limiterEnabled || outputProcessor.LatencyFrames != 0;
+                                hasAudio = processedAudio || (hasAudio && !effectsActive);
+                                int size = AudioMessage.Write(body, sampleIndex, Protocol.SamplesPerFrame,
+                                    hasAudio ? body.AsSpan(AudioMessage.PrefixSize, Protocol.PcmBytesPerFrame) : [], !hasAudio);
+                                if (hasAudio) _levelMeter.ProcessPcm16(body.AsSpan(AudioMessage.PrefixSize, Protocol.PcmBytesPerFrame));
+                                else _levelMeter.ProcessSilence(Protocol.SamplesPerFrame);
+                                SendSync(PacketType.Audio, hasAudio ? PacketFlags.None : PacketFlags.Silent, size);
+                                sampleIndex += Protocol.SamplesPerFrame;
                             }
-                            int size = AudioMessage.Write(body, sampleIndex, Protocol.SamplesPerFrame,
-                                hasAudio ? body.AsSpan(AudioMessage.PrefixSize, Protocol.PcmBytesPerFrame) : [], !hasAudio);
-                            // Publish levels atomically with connection transitions, so an
-                            // in-flight frame cannot restore stale levels after a reset.
-                            lock (connectionGate)
-                            {
-                                if (accepted == 1)
-                                {
-                                    if (hasAudio) _levelMeter.ProcessPcm16(body.AsSpan(AudioMessage.PrefixSize, Protocol.PcmBytesPerFrame));
-                                    else _levelMeter.ProcessSilence(Protocol.SamplesPerFrame);
-                                }
-                            }
-                            SendSync(PacketType.Audio, hasAudio ? PacketFlags.None : PacketFlags.Silent, size);
-                            sampleIndex += Protocol.SamplesPerFrame;
                         }
                         long deadline = startTick + (long)(ticks * Protocol.FrameMs * (double)Stopwatch.Frequency / 1000);
                         while (!runToken.IsCancellationRequested)

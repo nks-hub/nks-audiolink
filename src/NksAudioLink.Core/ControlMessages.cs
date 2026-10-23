@@ -26,7 +26,7 @@ public readonly record struct StatsMessage(bool Accepted, ushort BufferMs, ushor
         BinaryPrimitives.WriteUInt64LittleEndian(destination[25..], EchoTicks);
         if (AdaptiveBuffer is { } adaptive)
         {
-            destination[33] = 0xA1;
+            destination[33] = adaptive.Predictive ? (byte)0xA2 : (byte)0xA1;
             destination[34] = (byte)adaptive.Reason;
             BinaryPrimitives.WriteUInt16LittleEndian(destination[35..], (ushort)adaptive.TargetMs);
             BinaryPrimitives.WriteUInt16LittleEndian(destination[37..], (ushort)adaptive.MinimumMs);
@@ -43,10 +43,10 @@ public readonly record struct StatsMessage(bool Accepted, ushort BufferMs, ushor
         AdaptiveBufferStatus? adaptive = null;
         if (body.Length == AdaptiveSize)
         {
-            if (body[33] != 0xA1) return false;
+            if (body[33] is not (0xA1 or 0xA2)) return false;
             adaptive = new AdaptiveBufferStatus(BinaryPrimitives.ReadUInt16LittleEndian(body[35..]),
                 BinaryPrimitives.ReadUInt16LittleEndian(body[37..]), BinaryPrimitives.ReadUInt16LittleEndian(body[39..]),
-                (AdaptiveBufferReason)body[34], BinaryPrimitives.ReadUInt32LittleEndian(body[41..]));
+                (AdaptiveBufferReason)body[34], BinaryPrimitives.ReadUInt32LittleEndian(body[41..]), body[33] == 0xA2);
             if (!adaptive.Value.IsValid) return false;
         }
         message = new StatsMessage(body[0] == 1,

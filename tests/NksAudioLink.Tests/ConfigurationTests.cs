@@ -6,7 +6,7 @@ namespace NksAudioLink.Tests;
 public class ConfigurationTests
 {
     [Fact]
-    public void AdaptiveBufferPreservesManualTargetAndClampsOnlyItsInitialValue()
+    public void AdaptiveBufferPreservesManualTargetButUsesAnIndependentAutomaticInitialValue()
     {
         var manual = new ClientConfig { TargetLatencyMs = 155 };
         manual.Validate();
@@ -15,9 +15,11 @@ public class ConfigurationTests
         var adaptive = manual with { AdaptiveBuffer = true };
         adaptive.Validate();
         Assert.Equal(155, adaptive.TargetLatencyMs);
-        Assert.Equal(100, adaptive.EffectiveInitialLatencyMs);
-        Assert.Equal(20, (adaptive with { TargetLatencyMs = 10 }).EffectiveInitialLatencyMs);
+        Assert.Equal(40, adaptive.EffectiveInitialLatencyMs);
+        Assert.Equal(40, (adaptive with { TargetLatencyMs = 10 }).EffectiveInitialLatencyMs);
         Assert.Equal(40, (adaptive with { TargetLatencyMs = 40 }).EffectiveInitialLatencyMs);
+        Assert.Equal(60, (adaptive with { AdaptiveMinLatencyMs = 60 }).EffectiveInitialLatencyMs);
+        Assert.Equal(30, (adaptive with { AdaptiveMaxLatencyMs = 30 }).EffectiveInitialLatencyMs);
     }
 
     [Theory]

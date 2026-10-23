@@ -6,6 +6,31 @@ namespace NksAudioLink.Tests;
 public sealed class AdaptiveProtocolTests
 {
     [Fact]
+    public void PredictiveCapabilityRequiresItsOwnHelloVariantAndStatsMarker()
+    {
+        byte[] helloBody = new byte[74];
+        var hello = new HelloMessage(48000, 2, 1, 5, 40, "predictive", new(20, 100, Predictive: true));
+        int length = hello.Write(helloBody);
+        Assert.Equal(0x82, helloBody[5]);
+        Assert.True(HelloMessage.TryRead(helloBody.AsSpan(0, length), out var parsed));
+        Assert.Equal(hello, parsed);
+        Assert.True(parsed.IsSupported);
+        var stats = new StatsMessage(true, 35, 20, 0, 0, 0, 0, 0, 0,
+            new(50, 20, 100, AdaptiveBufferReason.PredictiveRisk, 1, Predictive: true));
+        byte[] body = new byte[StatsMessage.AdaptiveSize];
+        Assert.Equal(45, stats.Write(body));
+        Assert.Equal(0xA2, body[33]);
+        Assert.True(StatsMessage.TryRead(body, out var decoded));
+        Assert.Equal(stats, decoded);
+        body[33] = 0xA1;
+        Assert.False(StatsMessage.TryRead(body, out _)); // New reason cannot leak into legacy status.
+        Assert.Throws<ArgumentException>(() => (stats with { AdaptiveBuffer = stats.AdaptiveBuffer!.Value with { Predictive = false } }).Write(body));
+        body[34] = (byte)AdaptiveBufferReason.Initial;
+        Assert.True(StatsMessage.TryRead(body, out decoded));
+        Assert.False(decoded.AdaptiveBuffer!.Value.Predictive);
+    }
+
+    [Fact]
     public void ManualHelloRemainsByteForByteCompatibleAndAdaptiveUsesTheReservedFormatVariant()
     {
         byte[] body = new byte[74];

@@ -2,7 +2,7 @@
 
 A phase is checked only after its implementation and required verification are complete.
 
-The 2026-10-23 review adds SDK 9.0.203 compatibility, packet-loss and lifecycle fixes, a borderless desktop UI, signal meters, manual and adaptive buffering, one-application capture, redacted diagnostic copy, and an optional HTTP dashboard with one-hour server history. Local automated coverage now includes 134 portable tests, 48 Windows client/CLI tests, 15 dashboard tests and 36 package/version tests. Core line coverage was remeasured at 96.22% (85.82% branches). See [candidate review evidence](docs/VALIDATION.md#release-candidate-verification-2026-10-23). Historical phase counts below describe the earlier deployment; the current acceptance checklist records the new verification separately.
+The 2026-10-23 review adds SDK 9.0.203 compatibility, packet-loss and lifecycle fixes, a redesigned borderless desktop UI, signal meters, predictive adaptive buffering, one-application capture, mute/limiting, redacted diagnostic copy, and an optional HTTP dashboard with one-hour server history. Local RC2 verification includes 168 portable tests, 57 Windows client/CLI tests, 16 dashboard tests and 36 package/version tests. Core line coverage was remeasured at 96.52% (88.84% branches). See [RC2 evidence](docs/VALIDATION.md#rc2-verification-2026-10-23). Historical phase counts below describe earlier deployments; current acceptance is recorded separately.
 
 - [x] 0. Solution scaffold, local build and tests, public GitHub repository, and passing Windows/Linux CI. Verified on 2026-10-02.
 - [x] 1. Core protocol, HMAC, jitter buffer, resampling and clock drift tests. The portable Core/server/queue suite has 39 passing tests; Core line coverage is 86.93%. Drift simulation covers ±200 ppm over ten minutes of virtual time.
@@ -17,13 +17,17 @@ The 2026-10-23 review adds SDK 9.0.203 compatibility, packet-loss and lifecycle 
 
 ## Current acceptance checklist
 
-- [ ] Deliver version `0.1.0-rc.1` with a dated changelog, consistent app/API/CLI version reporting and verified binary artifacts from successful main-branch CI. Keep the remaining human checks explicit in the candidate release.
+- [x] Deliver [version 0.1.0-rc.1](https://github.com/nks-hub/nks-audiolink/releases/tag/v0.1.0-rc.1) with a dated changelog and verified binaries. [Main CI](https://github.com/nks-hub/nks-audiolink/actions/runs/39950444459) and [tagged release](https://github.com/nks-hub/nks-audiolink/actions/runs/39951476604) passed; published binaries match the deployed CI build byte-for-byte.
+- [ ] Deliver `0.1.0-rc.2` with the complete desktop redesign, predictive/hysteretic buffer, mute/limiter and explicit busy takeover; verify CI packages and a fresh deployed monitoring run. Keep RC1 immutable and remaining human checks explicit.
 - [x] Store the last hour of numeric monitoring history on the server, restore charts after browser refresh and offer 1/5/15/60-minute ranges. Memory history is bounded and contains no audio or credentials; restart clears it.
 - [x] Show native ALSA output errors/recoveries separately from network/jitter counters in the HTTP API and dashboard, retaining closed-session errors in lifetime totals.
 - [x] Add a client diagnostic-copy action with version, safe settings, current measurements and recent events; exclude shared keys and redact identifying addresses/device labels.
 - [x] Add manual 20/40/80 ms buffer presets with a custom value, preserving the 30 ms initial default and saved settings; verify compiled handlers and minimum-window layout.
 - [x] Add opt-in adaptive buffering with bounded increases, slow stable decreases, visible targets/reasons, compatible negotiation and tests of actual authenticated client/server traffic through deliberate packet loss.
 - [x] Add one-application process-tree capture with explicit process selection, native capability checks and safe exit/PID-reuse handling; verify actual two-process audio isolation on Windows 10.
+- [x] Make buffer mode, observed target and target/occupancy history visible without scrolling; hide manual timing in adaptive mode and preserve its value only for manual mode.
+- [x] Add predictive packet-timing estimates, asymmetric hysteresis, learned post-failure protection and explicit compatibility negotiation; verify rare delays, warmup, ordering, drift and smooth settling.
+- [x] Add live mute and optional sample-peak limiting with delay accounting, post-effect metering and safe stream-boundary handling; expose busy takeover only after a rejection and explicit click.
 - [x] Expand the primary-source competitor comparison into [COMPETITION.md](docs/COMPETITION.md), connecting findings to implemented work, acceptance checks and separately scoped future features.
 - [x] Merge the newer upstream README and MIT licensing changes; update About and the package workflow to include the MIT notice.
 - [x] Rerun portable and Windows client tests, including sender recovery after a scheduler discontinuity; remeasure Core coverage above 80%.

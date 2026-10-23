@@ -10,13 +10,23 @@ public sealed class ClientDiagnosticsTests
     {
         var state = new ClientDiagnosticSnapshot("Connected", CaptureMode.Application, 40, 100, 7355, 7356,
             new StatsMessage(true, 55, 20, 0, 0, 0, 0, 0, 0,
-                new AdaptiveBufferStatus(60, 20, 100, AdaptiveBufferReason.Underrun, 2)),
+                new AdaptiveBufferStatus(60, 20, 100, AdaptiveBufferReason.Underrun, 2, Predictive: true)),
             1, 90, null, true);
         string report = ClientDiagnostics.Format(state, [], [], null);
         Assert.Contains("Capture mode: Application", report);
         Assert.Contains("requested range: 20–100 ms", report);
         Assert.Contains("Active adaptive target: 60 ms; reason: Underrun; changes: 2", report);
         Assert.Contains("server buffer: 55 ms", report);
+        Assert.DoesNotContain("Target buffer: 40 ms", report);
+    }
+
+    [Fact]
+    public void ReportShowsMuteLimiterAndItsMeasuredProcessingDelayWithoutChangingGain()
+    {
+        var state = Disconnected() with { Muted = true, LimiterEnabled = true, ProcessingLatencyMs = 1 };
+        string report = ClientDiagnostics.Format(state, [], [], null);
+        Assert.Contains("gain: 100%", report);
+        Assert.Contains("Muted: True; peak limiter: True; processing lookahead: 1 ms", report);
     }
 
     [Fact]

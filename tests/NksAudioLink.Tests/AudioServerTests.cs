@@ -8,9 +8,10 @@ namespace NksAudioLink.Tests;
 public class AudioServerTests
 {
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task HelloNegotiatesOnlyTheRequestedBufferModeAndNativeErrorsCannotAdaptIt(bool adaptive)
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task HelloNegotiatesOnlyTheRequestedBufferModeAndNativeErrorsCannotAdaptIt(bool adaptive, bool predictive)
     {
         var sink = new DiagnosticSink();
         var server = new AudioServer(Config(FreePort()), _ => sink);
@@ -20,7 +21,7 @@ public class AudioServerTests
         try
         {
             byte[] body = new byte[74];
-            int length = new HelloMessage(48000, 2, 1, 5, 40, "test", adaptive ? new(20, 100) : null).Write(body);
+            int length = new HelloMessage(48000, 2, 1, 5, 40, "test", adaptive ? new(20, 100, predictive) : null).Write(body);
             await Send(udp, PacketType.Hello, 51, body[..length]);
             var reply = await Receive(udp, PacketType.Stats);
             Assert.Equal(adaptive ? StatsMessage.AdaptiveSize : StatsMessage.Size, reply.Body.Length);
@@ -29,11 +30,12 @@ public class AudioServerTests
             var status = server.GetStatus().Session!;
             Assert.Equal(40, status.TargetLatencyMs);
             Assert.Equal(adaptive, status.AdaptiveBuffer.HasValue);
+            Assert.Equal(predictive, status.Predictor.HasValue);
             sink.Log.Record(-32, 0); // Device recovery is not network jitter evidence.
             await Send(udp, PacketType.Hello, 51, body[..length]);
             reply = await Receive(udp, PacketType.Stats);
             Assert.True(StatsMessage.TryRead(reply.Body, out stats));
-            if (adaptive) Assert.Equal(new AdaptiveBufferStatus(40, 20, 100, AdaptiveBufferReason.Initial, 0), stats.AdaptiveBuffer);
+            if (adaptive) Assert.Equal(new AdaptiveBufferStatus(40, 20, 100, AdaptiveBufferReason.Initial, 0, predictive), stats.AdaptiveBuffer);
             Assert.Equal(40, server.GetStatus().Session!.TargetLatencyMs);
         }
         finally

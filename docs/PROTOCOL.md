@@ -43,15 +43,15 @@ With the `AUTH` flag, the packet ends in a **16-byte authentication tag**: the f
 |---:|---|
 | 4 | `sampleRate` (48000) |
 | 1 | `channels` (2) |
-| 1 | `format` (1 = manual s16le; 0x81 = s16le with adaptive-buffer negotiation) |
+| 1 | `format` (1 = manual s16le; 0x81 = legacy reactive adaptive; 0x82 = predictive adaptive) |
 | 1 | `frameMs` (5) |
-| 2 | Manual `targetLatencyMs` (for example, 30), or packed adaptive settings for format 0x81 |
+| 2 | Manual `targetLatencyMs` (for example, 30), or packed adaptive settings for format 0x81/0x82 |
 | 1 | Client name length N |
 | N | UTF-8 client name (up to 64 bytes) |
 
 The client sends `HELLO` at startup and every 2 seconds afterward to keep the session alive. The server replies with `STATS` (accepted) or `REJECT`.
 
-Manual format **1** retains its original byte layout and accepts a 10–200 ms target in 5 ms steps. Adaptive operation is opt-in. Format **0x81** still carries stereo s16le PCM; it selects an adaptive-buffer capability variant, not a different audio encoding. The body length and UTF-8 name layout are unchanged. Its two-byte target field packs three values, measured in **5 ms units**:
+Manual format **1** retains its original byte layout and accepts a 10–200 ms target in 5 ms steps. Adaptive operation is opt-in. Formats **0x81** (RC1 reactive policy) and **0x82** (predictive policy) both carry stereo s16le PCM; they select a buffer-control capability, not a different audio encoding. The body length and UTF-8 name layout are unchanged. Their two-byte target field packs three values, measured in **5 ms units**:
 
 | Bits | Value |
 |---|---|
@@ -61,7 +61,7 @@ Manual format **1** retains its original byte layout and accepts a 10–200 ms t
 
 All adaptive values must be multiples of 5 ms in **20–100 ms**, with `minimum <= initial <= maximum`. Example: initial 40 ms, minimum 20 ms and maximum 100 ms encode as `8 | (4 << 6) | (20 << 11) = 0xA108`, transmitted as bytes `08 A1`. Malformed ranges are rejected before opening the output. Format 1 never interprets these bits as adaptive settings. Periodic HELLOs retain the initial request; they do not reset the evolving target of an existing session.
 
-An older server parses the unchanged HELLO layout but rejects format 0x81 with `REJECT UnsupportedFormat`. A new server continues to accept old format-1 clients and sends them the original 33-byte STATS. An adaptive client must wait for accepted extended STATS with matching bounds before sending audio; a plain 33-byte acceptance is not an adaptive acknowledgment. Rejection requires an explicit new connection action, with adaptive mode disabled or a compatible server selected.
+A pre-adaptive server parses the unchanged HELLO layout but rejects 0x81/0x82 with `REJECT UnsupportedFormat`. RC1 accepts 0x81 and explicitly rejects 0x82. A predictive-capable server keeps format-1 manual and format-0x81 reactive clients working with their original responses. A predictive client must request 0x82 and wait for accepted extended STATS with marker 0xA2 and matching bounds before sending audio. Neither plain 33-byte acceptance nor legacy marker 0xA1 confirms predictive support. Rejection requires an explicit new connection action, with adaptive mode disabled or a compatible server selected. The current predictive client chooses its independent 40 ms initial target, clamped to the negotiated bounds; a saved manual target is not a predictive input.
 
 ### AUDIO body
 
@@ -95,16 +95,24 @@ The fields above total **33 bytes** and remain unchanged for manual sessions. Ad
 
 | Body offset | Size | Field |
 |---|---:|---|
-| 33 | 1 | Extension marker `0xA1` |
-| 34 | 1 | Adaptation reason: 0 initial, 1 jitter underrun, 2 packet loss, 3 late packet, 4 stable playback, 5 maximum reached |
+| 33 | 1 | Extension marker `0xA1` for legacy reactive / `0xA2` for predictive |
+| 34 | 1 | Reason: 0 initial, 1 jitter underrun, 2 packet loss, 3 late packet, 4 stable playback, 5 maximum reached, 6 predicted jitter risk (0xA2 only) |
 | 35 | 2 | Current target in milliseconds |
 | 37 | 2 | Negotiated minimum target in milliseconds |
 | 39 | 2 | Negotiated maximum target in milliseconds |
 | 41 | 4 | Number of target changes in this session |
 
-Extended status uses ordinary millisecond values, not packed 5 ms units. Receivers reject unknown extension markers/reasons, invalid bounds/targets and partial or oversized bodies. `bufferMs` remains measured occupancy and may differ from the current target during a transition. Native ALSA device errors are separate HTTP/journal diagnostics and never count as adaptive network-error evidence.
+Extended status uses ordinary millisecond values, not packed 5 ms units. Receivers reject unknown markers/reasons, reason 6 with legacy marker 0xA1, invalid bounds/targets and partial or oversized bodies. A server only sends predictive reasons/marker to a client that requested format 0x82; RC1 clients never receive the new marker. `bufferMs` remains measured occupancy and may differ from the current target during a transition. Native ALSA device errors are separate HTTP/journal diagnostics and never count as adaptive network-error evidence.
 
-The current policy raises the target by up to 10 ms on newly observed jitter underrun/loss/late-packet counters, no more than once per 400 output frames (2 seconds of audio). It lowers the target by 5 ms after 6,000 consecutive clean full output frames (30 seconds of audio), never outside negotiated bounds. Waiting for input does not qualify as stable playback; valid silent PCM frames do. The existing resampler changes occupancy smoothly with its bounded ratio and slew. After an actual underrun, refill uses the new target. Adaptation does not reset source indices, reconnect the session or discard frames simply to reach a smaller target.
+Format 0x81 retains the RC1 policy: increase up to 10 ms on new jitter underrun/loss/late-packet counters, with a 400-output-frame cooldown; decrease 5 ms after 6,000 clean full output frames.
+
+Format 0x82 predicts need from monotonic UDP arrival timestamps relative to source sample positions. A fixed 512-packet window (about 2.56 seconds at full rate) estimates transit spread as P98 minus P10, adds a 15 ms safety margin and up to 10 ms of rising-spread forecast. A slow EWMA spread baseline supplies the forecast; the resulting estimate smooths upward faster than downward. It evaluates at most every 100 ms, after at least 100 packets and 500 ms of warmup. Unique reordered packets contribute transit observations without moving the forward source reference. Recent duplicates and packets older than the bounded tracking window do not. Source-index gaps distinguish missing packets from arrival-time variation. Arrival/source discontinuities above 250 ms reset learning, preserving the current target and session.
+
+An increase requires three consecutive estimates at least 5 ms above target and uses the same maximum 10 ms step / 400-output-frame cooldown. A decrease requires 6,000 consecutive clean full output frames while estimated need stays at least 10 ms below target, then lowers the target by 5 ms. Genuine underrun/loss/unique-late events retain a bounded reactive fallback; startup losses before the first full output frame and duplicate lateness do not count as predictive risk. Waiting for input cannot count as stability; valid silent PCM frames can. This hysteresis prevents immediate reversal near the threshold. Rich estimates, warmup state and hysteresis progress are exposed through HTTP/history, while UDP retains the 45-byte acknowledgment/status layout.
+
+After an actual predictive-session underrun/loss/unique-late event, decreases are additionally held for 24,000 clean full output frames (120 seconds). While that hold is active, a recent tail requirement (window maximum transit minus P10, plus 15 ms) above target minus 10 ms renews it. Thus rare recurring delays filtered out of P98 can preserve a learned safety target without raising it by themselves. The hold expires after the tail disappears and clean playback continues; normal 30-second settling then governs subsequent steps. HTTP reports `FailureHold` during this protection. A new session/reset clears the learned hold.
+
+Both policies keep the existing resampler's phase, bounded ratio and slew while shifting occupancy smoothly. An actual underrun refills to the updated target. Neither policy reconnects, resets source indices nor discards frames simply to reach a smaller target. Prediction cannot guarantee recovery from previously unseen or unbounded network delays.
 
 ### DISCOVER / DISCOVER_REPLY
 

@@ -60,13 +60,13 @@ public sealed class AudioServer
             if (_session is { } active)
             {
                 var stats = active.Engine.GetStats();
-                var adaptive = active.Engine.GetAdaptiveStatus();
+                var control = active.Engine.GetBufferControlStatus();
                 session = new SessionStatus(active.Id,
                     (long)Stopwatch.GetElapsedTime(active.StartedTick).TotalSeconds,
                     Math.Round(Stopwatch.GetElapsedTime(active.LastPacketTick).TotalMilliseconds, 1),
                     stats.BufferMs, Volatile.Read(ref active.SinkDelayMs), stats.RatioPpm,
                     stats.Lost, stats.Late, stats.Underruns, stats.Overruns, stats.Duplicates,
-                    active.Levels.GetSnapshot(), active.NativeStatus, adaptive?.TargetMs ?? active.Engine.TargetLatencyMs, adaptive);
+                    active.Levels.GetSnapshot(), active.NativeStatus, control.TargetMs, control.Adaptive, control.Predictor);
             }
             return new ServerStatus(config.Name,
                 ProductVersion.Display,
@@ -113,11 +113,12 @@ public sealed class AudioServer
         while (!ct.IsCancellationRequested)
         {
             UdpReceiveResult received = await udp.ReceiveAsync(ct);
-            await HandleAsync(udp, received, ct);
+            long arrivalTick = Stopwatch.GetTimestamp();
+            await HandleAsync(udp, received, arrivalTick, ct);
         }
     }
 
-    private async Task HandleAsync(UdpClient udp, UdpReceiveResult received, CancellationToken ct)
+    private async Task HandleAsync(UdpClient udp, UdpReceiveResult received, long arrivalTick, CancellationToken ct)
     {
         if (!_allow.Any(range => range.Contains(received.RemoteEndPoint.Address))) return;
         if (!Protocol.TryRead(received.Buffer, _key ?? [], out var header, out var bodySpan)) return;
@@ -188,12 +189,12 @@ public sealed class AudioServer
                 bool silent = header.Flags.HasFlag(PacketFlags.Silent);
                 if (AudioMessage.TryRead(body.Span, silent, out ulong index, out var pcm))
                 {
-                    long tick = Stopwatch.GetTimestamp();
+                    long tick = arrivalTick;
                     if (_session.LastAudioTick != 0)
                         _session.MaxAudioGapMs = Math.Max(_session.MaxAudioGapMs,
                             (tick - _session.LastAudioTick) * 1000.0 / Stopwatch.Frequency);
                     _session.LastAudioTick = tick;
-                    _session.Engine.Receive(index, pcm, silent);
+                    _session.Engine.Receive(index, pcm, silent, arrivalTick);
                     _session.LastPacketTick = tick;
                 }
             }

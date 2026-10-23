@@ -58,8 +58,10 @@ public sealed record ClientConfig
     public int AdaptiveMaxLatencyMs { get; init; } = 100;
     [System.Text.Json.Serialization.JsonIgnore]
     public int EffectiveInitialLatencyMs => AdaptiveBuffer
-        ? Math.Clamp(TargetLatencyMs, AdaptiveMinLatencyMs, AdaptiveMaxLatencyMs) : TargetLatencyMs;
+        ? Math.Clamp(40, AdaptiveMinLatencyMs, AdaptiveMaxLatencyMs) : TargetLatencyMs;
     public double Gain { get; init; } = 1;
+    public bool Muted { get; init; }
+    public bool LimiterEnabled { get; init; }
     public string? PskBase64 { get; init; }
 
     public static ClientConfig Load(string path) =>

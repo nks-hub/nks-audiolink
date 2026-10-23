@@ -40,25 +40,43 @@ public sealed class CaptureProcessTests
     [Fact]
     public void ProcessCaptureAndAdaptiveOptionsComposeWithoutChangingManualTarget()
     {
-        var options = CommandLineOptions.Parse(["send", "--process", "123", "--latency", "150", "--adaptive-buffer", "true", "--buffer-min", "30", "--buffer-max", "80"]);
-        Assert.Equal(123, options.ProcessId);
-        Assert.True(options.Config.AdaptiveBuffer);
-        Assert.Equal(150, options.Config.TargetLatencyMs);
-        Assert.Equal(80, options.Config.EffectiveInitialLatencyMs);
-        Assert.Equal(30, options.Config.AdaptiveMinLatencyMs);
+        string path = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(path, "{\"TargetLatencyMs\":150}");
+            var options = CommandLineOptions.Parse(["send", "--process", "123", "--config", path, "--adaptive-buffer", "true", "--buffer-min", "30", "--buffer-max", "80", "--mute", "true", "--limiter", "true"]);
+            Assert.Equal(123, options.ProcessId);
+            Assert.True(options.Config.AdaptiveBuffer);
+            Assert.Equal(150, options.Config.TargetLatencyMs);
+            Assert.Equal(40, options.Config.EffectiveInitialLatencyMs);
+            Assert.Equal(30, options.Config.AdaptiveMinLatencyMs);
+            Assert.True(options.Config.Muted);
+            Assert.True(options.Config.LimiterEnabled);
+        }
+        finally { File.Delete(path); }
     }
 
-    [Fact]
-    public void TestToneCannotSilentlyIgnoreAdaptiveConfiguration()
+    [Theory]
+    [InlineData("AdaptiveBuffer")]
+    [InlineData("Muted")]
+    [InlineData("LimiterEnabled")]
+    public void TestToneCannotSilentlyIgnoreSendOnlyConfiguration(string setting)
     {
         string path = Path.GetTempFileName();
         try
         {
-            File.WriteAllText(path, "{\"AdaptiveBuffer\":true}");
+            File.WriteAllText(path, $"{{\"{setting}\":true}}");
             var error = Assert.Throws<ArgumentException>(() => CommandLineOptions.Parse(["test-tone", "--config", path]));
             Assert.Contains("send only", error.Message);
         }
         finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public void ExplicitManualLatencyCannotBeCombinedWithAdaptiveMode()
+    {
+        Assert.Throws<ArgumentException>(() => CommandLineOptions.Parse(["send", "--latency", "20", "--adaptive-buffer", "true"]));
+        Assert.Throws<ArgumentException>(() => CommandLineOptions.Parse(["send", "--adaptive-buffer", "true", "--latency", "20"]));
     }
 
     [Theory]

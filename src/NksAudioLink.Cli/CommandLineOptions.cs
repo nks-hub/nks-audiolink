@@ -26,6 +26,7 @@ public sealed record CommandLineOptions(ClientConfig Config, bool Loopback, bool
         string? deviceId = null;
         int? processId = null;
         bool explicitMode = false;
+        bool explicitLatency = false;
         for (int i = 1; i < args.Length; i += 2)
         {
             string value = args[i + 1];
@@ -36,7 +37,9 @@ public sealed record CommandLineOptions(ClientConfig Config, bool Loopback, bool
                 case "--server" when command != "discover": config = config with { Server = value }; break;
                 case "--gain" when command != "discover": config = config with { Gain = double.Parse(value, CultureInfo.InvariantCulture) }; break;
                 case "--seconds" when command != "discover": seconds = int.Parse(value, CultureInfo.InvariantCulture); break;
-                case "--latency" when command == "send": config = config with { TargetLatencyMs = int.Parse(value, CultureInfo.InvariantCulture) }; break;
+                case "--latency" when command == "send": explicitLatency = true; config = config with { TargetLatencyMs = int.Parse(value, CultureInfo.InvariantCulture) }; break;
+                case "--mute" when command == "send": config = config with { Muted = bool.Parse(value) }; break;
+                case "--limiter" when command == "send": config = config with { LimiterEnabled = bool.Parse(value) }; break;
                 case "--adaptive-buffer" when command == "send": config = config with { AdaptiveBuffer = bool.Parse(value) }; break;
                 case "--buffer-min" when command == "send": config = config with { AdaptiveMinLatencyMs = int.Parse(value, CultureInfo.InvariantCulture) }; break;
                 case "--buffer-max" when command == "send": config = config with { AdaptiveMaxLatencyMs = int.Parse(value, CultureInfo.InvariantCulture) }; break;
@@ -51,8 +54,10 @@ public sealed record CommandLineOptions(ClientConfig Config, bool Loopback, bool
             }
         }
         config.Validate();
-        if (command == "test-tone" && config.AdaptiveBuffer)
-            throw new ArgumentException("Adaptive buffering is supported by send only. Disable AdaptiveBuffer in the test-tone configuration.");
+        if (command == "test-tone" && (config.AdaptiveBuffer || config.Muted || config.LimiterEnabled))
+            throw new ArgumentException("Adaptive buffering, mute and limiter are supported by send only. Disable these options in the test-tone configuration.");
+        if (config.AdaptiveBuffer && explicitLatency)
+            throw new ArgumentException("--latency applies to manual buffering only. Adaptive buffering chooses its target automatically; omit --latency or disable --adaptive-buffer.");
         if (processId is <= 0) throw new ArgumentOutOfRangeException(nameof(args), "Use a positive PID with --process.");
         if (processId is not null && (deviceId is not null || explicitMode))
             throw new ArgumentException("Use --process PID on its own; it cannot be combined with --mode or --device.");

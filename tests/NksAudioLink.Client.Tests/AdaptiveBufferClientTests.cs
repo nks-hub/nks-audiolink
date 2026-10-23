@@ -23,12 +23,12 @@ public sealed class AdaptiveBufferClientTests
             Assert.True(Protocol.TryRead(first.Buffer, [], out var header, out var body));
             Assert.Equal(PacketType.Hello, header.Type);
             Assert.True(HelloMessage.TryRead(body, out var hello));
-            Assert.Equal(100, hello.TargetLatencyMs);
-            Assert.Equal(new AdaptiveBufferOptions(20, 100), hello.AdaptiveBuffer);
+            Assert.Equal(40, hello.TargetLatencyMs);
+            Assert.Equal(new AdaptiveBufferOptions(20, 100, Predictive: true), hello.AdaptiveBuffer);
             await Task.Delay(150, stop.Token);
             Assert.Equal(0, server.Available); // No PCM before the adaptive acknowledgment.
 
-            var adaptive = new AdaptiveBufferStatus(100, 20, 100, AdaptiveBufferReason.Initial, 0);
+            var adaptive = new AdaptiveBufferStatus(40, 20, 100, AdaptiveBufferReason.Initial, 0, Predictive: true);
             await Reply(server, first.RemoteEndPoint, header.Session, adaptive);
             Assert.Equal(adaptive, (await observed.Task.WaitAsync(stop.Token)).AdaptiveBuffer);
             int audio = 0;
@@ -51,9 +51,10 @@ public sealed class AdaptiveBufferClientTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task MissingOrDifferentAdaptiveAcknowledgmentStopsBeforeSendingAudio(bool differentBounds)
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public async Task MissingDifferentOrLegacyAcknowledgmentStopsBeforeSendingAudio(int acknowledgmentKind)
     {
         using var server = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
         using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(5));
@@ -62,8 +63,13 @@ public sealed class AdaptiveBufferClientTests
         Task running = client.RunAsync(null, true, stop.Token);
         var first = await server.ReceiveAsync(stop.Token);
         Assert.True(Protocol.TryRead(first.Buffer, [], out var header, out _));
-        await Reply(server, first.RemoteEndPoint, header.Session,
-            differentBounds ? new AdaptiveBufferStatus(40, 40, 80, AdaptiveBufferReason.Initial, 0) : null);
+        AdaptiveBufferStatus? reply = acknowledgmentKind switch
+        {
+            1 => new(40, 40, 80, AdaptiveBufferReason.Initial, 0, Predictive: true),
+            2 => new(40, 20, 100, AdaptiveBufferReason.Initial, 0),
+            _ => null
+        };
+        await Reply(server, first.RemoteEndPoint, header.Session, reply);
         var error = await Assert.ThrowsAsync<ServerRejectedException>(() => running.WaitAsync(TimeSpan.FromSeconds(3)));
         Assert.Contains("turn off Adaptive buffer", error.Message);
         Assert.True(source.Disposed);
@@ -86,7 +92,7 @@ public sealed class AdaptiveBufferClientTests
         var first = await server.ReceiveAsync(stop.Token);
         Assert.True(Protocol.TryRead(first.Buffer, [], out var header, out _));
         // The legacy parser sees a valid HELLO body and rejects its new format.
-        Assert.Equal(0x81, first.Buffer[Protocol.HeaderSize + 5]);
+        Assert.Equal(0x82, first.Buffer[Protocol.HeaderSize + 5]);
         byte[] packet = new byte[Protocol.HeaderSize + 1];
         int length = Protocol.Write(packet, new(PacketType.Reject, PacketFlags.None, header.Session, 1),
             [(byte)RejectReason.UnsupportedFormat]);

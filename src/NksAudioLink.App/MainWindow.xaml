@@ -1,149 +1,360 @@
-<Window x:Class="NksAudioLink.App.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
-        Title="NKS AudioLink" Width="960" Height="720" MinWidth="800" MinHeight="640" WindowStartupLocation="CenterScreen"
-        Background="#101923" Foreground="#EDF2F7" FontFamily="Segoe UI" FontSize="13"
-        Closing="Window_Closing" StateChanged="Window_StateChanged" WindowStyle="None" ResizeMode="CanResize" Icon="Assets/AudioLink.ico">
-  <shell:WindowChrome.WindowChrome><shell:WindowChrome CaptionHeight="46" ResizeBorderThickness="6" CornerRadius="0" GlassFrameThickness="0" UseAeroCaptionButtons="False"/></shell:WindowChrome.WindowChrome>
+<Window x:Class="NksAudioLink.App.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework" Title="NKS AudioLink" Width="960" Height="720" MinWidth="800" MinHeight="640" WindowStartupLocation="CenterScreen" Background="#101923" Foreground="#EDF2F7" FontFamily="Segoe UI" FontSize="13" Closing="Window_Closing" StateChanged="Window_StateChanged" WindowStyle="None" ResizeMode="CanResize" Icon="Assets/AudioLink.ico">
+  <shell:WindowChrome.WindowChrome>
+    <shell:WindowChrome CaptionHeight="46" ResizeBorderThickness="6" CornerRadius="0" GlassFrameThickness="0" UseAeroCaptionButtons="False" />
+  </shell:WindowChrome.WindowChrome>
   <Border x:Name="WindowFrame" BorderBrush="#334353" BorderThickness="1">
     <Grid>
-      <Grid.RowDefinitions><RowDefinition Height="46"/><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="44"/></Grid.RowDefinitions>
+      <Grid.RowDefinitions>
+        <RowDefinition Height="46" />
+        <RowDefinition Height="78" />
+        <RowDefinition />
+        <RowDefinition Height="44" />
+      </Grid.RowDefinitions>
       <Grid Background="#151F2B">
-        <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-        <StackPanel Orientation="Horizontal" Margin="18,0" VerticalAlignment="Center"><Image Source="{StaticResource BrandMark}" Width="23" Height="23"/><TextBlock Text="NKS AudioLink" Margin="10,0,0,0" VerticalAlignment="Center" FontWeight="SemiBold"/></StackPanel>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <StackPanel Orientation="Horizontal" Margin="18,0" VerticalAlignment="Center">
+          <Image Source="{StaticResource BrandMark}" Width="23" Height="23" />
+          <TextBlock Text="NKS AudioLink" Margin="10,0,0,0" VerticalAlignment="Center" FontWeight="SemiBold" />
+        </StackPanel>
         <StackPanel Grid.Column="1" Orientation="Horizontal" shell:WindowChrome.IsHitTestVisibleInChrome="True">
-          <Button Content="About" MinHeight="34" VerticalAlignment="Center" Padding="12,5" Margin="0,0,8,0" Background="Transparent" Click="About_Click"/>
-          <Button Style="{StaticResource CaptionButton}" Content="&#xE921;" ToolTip="Minimize" AutomationProperties.Name="Minimize window" Click="Minimize_Click"/>
-          <Button x:Name="MaximizeButton" Style="{StaticResource CaptionButton}" Content="&#xE922;" ToolTip="Maximize" AutomationProperties.Name="Maximize or restore window" Click="Maximize_Click"/>
-          <Button Style="{StaticResource CaptionButton}" Content="&#xE8BB;" ToolTip="Hide to notification area (audio keeps playing)" AutomationProperties.Name="Hide to notification area" Click="Hide_Click"/>
+          <Button Content="About" MinHeight="34" VerticalAlignment="Center" Padding="12,5" Margin="0,0,8,0" Background="Transparent" Click="About_Click" />
+          <Button Style="{StaticResource CaptionButton}" Content="&#xE921;" ToolTip="Minimize" AutomationProperties.Name="Minimize window" Click="Minimize_Click" />
+          <Button x:Name="MaximizeButton" Style="{StaticResource CaptionButton}" Content="&#xE922;" ToolTip="Maximize" AutomationProperties.Name="Maximize or restore window" Click="Maximize_Click" />
+          <Button Style="{StaticResource CaptionButton}" Content="&#xE8BB;" ToolTip="Hide to notification area (audio keeps playing)" AutomationProperties.Name="Hide to notification area" Click="Hide_Click" />
         </StackPanel>
       </Grid>
-      <Border Grid.Row="1" BorderBrush="#293644" BorderThickness="0,0,0,1" Padding="22,16">
-        <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-          <StackPanel Margin="0,0,20,0">
-            <Border x:Name="StatusBadge" HorizontalAlignment="Left" Background="#263749" CornerRadius="5" Padding="9,4"><TextBlock x:Name="StatusText" Text="Disconnected" Foreground="#B6C6D7" FontWeight="SemiBold"/></Border>
-            <TextBlock x:Name="DetailText" Text="Choose your server and audio source, then connect." Foreground="{StaticResource Muted}" Margin="0,7,0,0" TextWrapping="Wrap" MaxHeight="36" TextTrimming="CharacterEllipsis" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
+      <Border Grid.Row="1" BorderBrush="#293644" BorderThickness="0,0,0,1" Padding="18,10">
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+          <StackPanel VerticalAlignment="Center" Margin="0,0,12,0">
+            <Border x:Name="StatusBadge" HorizontalAlignment="Left" Background="#263749" CornerRadius="4" Padding="8,3">
+              <TextBlock x:Name="StatusText" Text="Disconnected" Foreground="#B6C6D7" FontWeight="SemiBold" />
+            </Border>
+            <TextBlock x:Name="DetailText" Text="Choose a receiver and audio source, then connect." Foreground="{StaticResource Muted}" Margin="0,6,0,0" TextTrimming="CharacterEllipsis" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" />
           </StackPanel>
-          <Button x:Name="ConnectButton" Grid.Column="1" Content="Connect" Width="144" Height="40" VerticalAlignment="Center" Background="#187C6D" FontSize="14" FontWeight="SemiBold" Click="Connect_Click"/>
+          <Button x:Name="TakeoverButton" Grid.Column="1" Content="Take over receiver" Visibility="Collapsed" Margin="0,0,8,0" Padding="10,6" VerticalAlignment="Center" Click="Takeover_Click" ToolTip="Replace the receiver's current client with this connection." />
+          <Button x:Name="ConnectButton" Grid.Column="2" Content="Connect" Width="124" Height="38" VerticalAlignment="Center" Background="#187C6D" FontSize="14" FontWeight="SemiBold" Click="Connect_Click" />
         </Grid>
       </Border>
-      <Grid Grid.Row="2" Margin="22,18,22,0">
-        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="24"/><ColumnDefinition Width="292"/></Grid.ColumnDefinitions>
-        <Grid><Grid.RowDefinitions><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,0,8,0">
-          <StackPanel>
-            <Border x:Name="ServerCard" Margin="0,0,0,12">
-              <StackPanel>
-                <TextBlock Text="Server" Style="{StaticResource SectionTitle}"/>
-                <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="76"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                  <StackPanel Margin="0,0,10,0"><TextBlock Text="Address or host name" Style="{StaticResource Label}"/><TextBox x:Name="ServerBox" Text="127.0.0.1" AutomationProperties.Name="Server address or host name"/></StackPanel>
-                  <StackPanel Grid.Column="1" Margin="0,0,10,0"><TextBlock Text="UDP port" Style="{StaticResource Label}"/><TextBox x:Name="PortBox" Text="7355" AutomationProperties.Name="Audio UDP port" Padding="8,8"/></StackPanel>
-                  <Button Grid.Column="2" x:Name="DiscoverButton" Content="Find" Padding="12,7" ToolTip="Discover a server on this network" VerticalAlignment="Bottom" Click="Discover_Click"/>
-                </Grid>
-                <TextBlock x:Name="DiscoveryText" Text="Find a server on your local network." TextWrapping="Wrap" Foreground="{StaticResource Muted}" FontSize="12" Margin="0,7,0,0"/>
-                <Expander Header="Shared key (optional)" Margin="0,9,0,0"><StackPanel Margin="0,8,0,0"><TextBlock Text="Base64 key, if required by your server" Style="{StaticResource Label}"/><PasswordBox x:Name="PskBox" AutomationProperties.Name="Shared key in Base64"/></StackPanel></Expander>
-              </StackPanel>
-            </Border>
-            <Border x:Name="SourceCard" Margin="0,0,0,12">
-              <StackPanel>
-                <Grid Margin="0,0,0,8"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                  <TextBlock Text="Audio source" Style="{StaticResource SectionTitle}" Margin="0" VerticalAlignment="Center"/>
-                  <Button Grid.Column="1" Content="Refresh" MinHeight="28" Padding="8,3" Background="Transparent" Foreground="{StaticResource Muted}" Click="RefreshDevices_Click"/>
-                </Grid>
-                <WrapPanel Margin="0,0,0,7"><RadioButton x:Name="LoopbackRadio" GroupName="Mode" Content="All PC audio" IsChecked="True" Checked="Mode_Checked"/><RadioButton x:Name="ProcessRadio" GroupName="Mode" Content="One application" Checked="Mode_Checked"/><RadioButton x:Name="VirtualRadio" GroupName="Mode" Content="Virtual cable" Checked="Mode_Checked"/><RadioButton x:Name="CaptureRadio" GroupName="Mode" Content="Other input" Checked="Mode_Checked"/></WrapPanel>
-                <ComboBox x:Name="DeviceCombo" DisplayMemberPath="Name" SelectedValuePath="Id" MinHeight="38" AutomationProperties.Name="Audio device" ToolTip="{Binding SelectedItem.Name, RelativeSource={RelativeSource Self}}"/>
-                <ComboBox x:Name="ProcessCombo" DisplayMemberPath="Name" MinHeight="38" Visibility="Collapsed" AutomationProperties.Name="Application process including its children" ToolTip="{Binding SelectedItem.Name, RelativeSource={RelativeSource Self}}"/>
-                <TextBlock x:Name="ModeDescription" Text="Sends the selected output. It still plays on this PC." Foreground="{StaticResource Muted}" FontSize="12" Margin="0,7,0,0" TextWrapping="Wrap"/>
-                <TextBlock x:Name="DeviceHint" Foreground="#F7CC88" FontSize="12" Margin="0,6,0,0" TextWrapping="Wrap"><TextBlock.Style><Style TargetType="TextBlock"><Style.Triggers><Trigger Property="Text" Value=""><Setter Property="Visibility" Value="Collapsed"/></Trigger></Style.Triggers></Style></TextBlock.Style></TextBlock>
-                <Button x:Name="CableInfoButton" Content="VB-CABLE website" HorizontalAlignment="Left" Margin="0,8,0,0" Visibility="Collapsed" Click="CableInfo_Click"/>
-              </StackPanel>
-            </Border>
-            <Expander Header="Buffer &amp; startup" Padding="0,10,0,0" BorderBrush="#293644" BorderThickness="0,1,0,0">
-              <StackPanel Margin="0,12,0,4">
-                <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="Target buffer" Style="{StaticResource Label}"/><TextBlock Grid.Column="1" x:Name="LatencyValue" Text="30 ms"/></Grid>
-                <ComboBox x:Name="BufferPresetCombo" Margin="0,2,0,7" SelectionChanged="BufferPreset_Changed" AutomationProperties.Name="Target buffer preset" ToolTip="Manual presets: less buffering reduces delay; more buffering tolerates network variation. Choose Custom to keep the slider value.">
-                  <ComboBoxItem Content="Low latency — 20 ms" Tag="20"/>
-                  <ComboBoxItem Content="Balanced — 40 ms" Tag="40"/>
-                  <ComboBoxItem Content="Robust — 80 ms" Tag="80"/>
-                  <ComboBoxItem Content="Custom"/>
-                </ComboBox>
-                <Slider x:Name="LatencySlider" Minimum="10" Maximum="200" Value="30" TickFrequency="5" SmallChange="5" LargeChange="10" IsSnapToTickEnabled="True" ValueChanged="LatencySlider_Changed" AutomationProperties.Name="Target buffer milliseconds"/>
-                <TextBlock Text="Set before connecting. A larger buffer tolerates more network variation but adds delay." Foreground="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,5,0,12"/>
-                <CheckBox x:Name="AdaptiveBufferCheck" Content="Adaptive buffer (20–100 ms)" Margin="0,0,0,12" ToolTip="Opt in: the server adjusts its target within 20–100 ms in response to stream errors and stable playback. The initial target is the slider value clamped to that range; your manual value is preserved."/>
-                <CheckBox x:Name="StartWithWindowsCheck" Content="Start with Windows" Checked="StartWithWindows_Changed" Unchecked="StartWithWindows_Changed"/>
-              </StackPanel>
-            </Expander>
-          </StackPanel>
-        </ScrollViewer>
-        <StackPanel Grid.Row="1" Margin="0,12,8,0">
-            <Grid Margin="0,0,0,4"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="Gain" Style="{StaticResource SectionTitle}" Margin="0"/><TextBlock Grid.Column="1" x:Name="GainValue" Text="100%" FontWeight="SemiBold"/></Grid>
-            <Slider x:Name="GainSlider" Minimum="0" Maximum="200" Value="100" TickFrequency="5" SmallChange="1" LargeChange="10" ValueChanged="GainSlider_Changed" AutomationProperties.Name="Audio gain percent"/>
-            <StackPanel Margin="0,8,0,14" ToolTip="Sent level: measured after gain, before UDP. Bars show 300 ms RMS; markers hold peaks for one second. Scale: -60 to 0 dBFS. This is not the receiver's output level.">
-              <Grid Margin="0,0,0,5"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                <TextBlock Text="Sent level" Foreground="{StaticResource Muted}" FontSize="12"/>
-                <TextBlock x:Name="SentClipText" Grid.Column="1" Text="CLIP" Foreground="#FF919C" FontWeight="SemiBold" FontSize="11" Margin="0,0,10,0" Visibility="Hidden" AutomationProperties.Name="Sent audio clipping"/>
-                <TextBlock Grid.Column="2" Text="RMS · dBFS" Foreground="{StaticResource Muted}" FontSize="11"/>
-              </Grid>
-              <Grid Height="20"><Grid.ColumnDefinitions><ColumnDefinition Width="20"/><ColumnDefinition/><ColumnDefinition Width="53"/></Grid.ColumnDefinitions>
-                <TextBlock Text="L" Foreground="{StaticResource Muted}" VerticalAlignment="Center" FontSize="11"/>
-                <Grid x:Name="LeftMeterTrack" Grid.Column="1" Height="8" VerticalAlignment="Center" Background="#344252" ClipToBounds="True">
-                  <Border x:Name="LeftRmsBar" Width="0" HorizontalAlignment="Left" Background="#70D6B5"/>
-                  <Border x:Name="LeftPeakMarker" Width="2" HorizontalAlignment="Left" Background="#EDF4FA" Visibility="Hidden"/>
-                </Grid>
-                <TextBlock x:Name="LeftLevelText" Grid.Column="2" Text="−∞" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="12" AutomationProperties.Name="{Binding Text, RelativeSource={RelativeSource Self}, StringFormat='Left sent RMS level: {0} dBFS'}"/>
-              </Grid>
-              <Grid Height="20"><Grid.ColumnDefinitions><ColumnDefinition Width="20"/><ColumnDefinition/><ColumnDefinition Width="53"/></Grid.ColumnDefinitions>
-                <TextBlock Text="R" Foreground="{StaticResource Muted}" VerticalAlignment="Center" FontSize="11"/>
-                <Grid x:Name="RightMeterTrack" Grid.Column="1" Height="8" VerticalAlignment="Center" Background="#344252" ClipToBounds="True">
-                  <Border x:Name="RightRmsBar" Width="0" HorizontalAlignment="Left" Background="#70D6B5"/>
-                  <Border x:Name="RightPeakMarker" Width="2" HorizontalAlignment="Left" Background="#EDF4FA" Visibility="Hidden"/>
-                </Grid>
-                <TextBlock x:Name="RightLevelText" Grid.Column="2" Text="−∞" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="12" AutomationProperties.Name="{Binding Text, RelativeSource={RelativeSource Self}, StringFormat='Right sent RMS level: {0} dBFS'}"/>
-              </Grid>
-            </StackPanel>
-
-          </StackPanel>
-        </Grid>
-        <Grid Grid.Column="2">
-          <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition/></Grid.RowDefinitions>
-          <Border Background="#172330" BorderBrush="#2B3A49" BorderThickness="1" CornerRadius="8" Padding="18,15">
+      <Grid Grid.Row="2" Margin="18,14,18,0">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="1.1*" />
+          <ColumnDefinition Width="18" />
+          <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+        <Grid>
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition />
+            <RowDefinition Height="Auto" />
+          </Grid.RowDefinitions>
+          <Border x:Name="ServerCard" Margin="0,0,0,8">
             <StackPanel>
-              <TextBlock Text="Live status" Style="{StaticResource SectionTitle}" Margin="0,0,0,8"/>
-              <TextBlock Text="Estimated delay" Foreground="{StaticResource Muted}"/>
-              <TextBlock x:Name="EndToEndText" Text="&#x2014;" FontSize="34" FontWeight="SemiBold" Margin="0,0,0,2"/>
-              <TextBlock Text="Excludes receiver and speaker delay" Foreground="{StaticResource Muted}" FontSize="11"/>
-              <Grid Margin="0,12,0,0"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
-                <TextBlock Text="Network RTT" Foreground="{StaticResource Muted}" Margin="0,0,0,7"/><TextBlock x:Name="RttText" Grid.Column="1" Text="&#x2014;" FontWeight="SemiBold"/>
-                <TextBlock Grid.Row="1" Text="Buffer occupancy" Foreground="{StaticResource Muted}" Margin="0,0,0,7"/><TextBlock x:Name="BufferText" Grid.Row="1" Grid.Column="1" Text="&#x2014;" FontWeight="SemiBold"/>
-                <TextBlock Grid.Row="2" Text="Output queue" Foreground="{StaticResource Muted}"/><TextBlock x:Name="SinkDelayText" Grid.Row="2" Grid.Column="1" Text="&#x2014;" FontWeight="SemiBold"/>
+              <TextBlock Text="Receiver" FontWeight="SemiBold" Margin="0,0,0,5" />
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBox x:Name="ServerBox" Text="127.0.0.1" Padding="8,6" AutomationProperties.Name="Server address or host name" />
+                <Button x:Name="DiscoverButton" Grid.Column="1" Content="Find" Margin="7,0,0,0" MinHeight="32" Padding="12,5" Click="Discover_Click" />
               </Grid>
-              <TextBlock x:Name="BufferTargetText" Text="Target: —" Foreground="{StaticResource Muted}" FontSize="11" Margin="0,6,0,0" TextTrimming="CharacterEllipsis" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
-              <Border BorderBrush="#344252" BorderThickness="0,1,0,0" Margin="0,10,0,0" Padding="0,12,0,0">
-                <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="14"/><ColumnDefinition/></Grid.ColumnDefinitions><Grid.RowDefinitions><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
-                  <DockPanel Margin="0,0,0,7"><TextBlock x:Name="LostText" DockPanel.Dock="Right" Text="&#x2014;" FontWeight="SemiBold"/><TextBlock Text="Lost" Foreground="{StaticResource Muted}"/></DockPanel>
-                  <DockPanel Grid.Column="2" Margin="0,0,0,7"><TextBlock x:Name="LateText" DockPanel.Dock="Right" Text="&#x2014;" FontWeight="SemiBold"/><TextBlock Text="Late" Foreground="{StaticResource Muted}"/></DockPanel>
-                  <DockPanel Grid.Row="1"><TextBlock x:Name="UnderrunText" DockPanel.Dock="Right" Text="&#x2014;" FontWeight="SemiBold"/><TextBlock Text="Underruns" Foreground="{StaticResource Muted}" FontSize="12"/></DockPanel>
-                  <DockPanel Grid.Row="1" Grid.Column="2"><TextBlock x:Name="OverrunText" DockPanel.Dock="Right" Text="&#x2014;" FontWeight="SemiBold"/><TextBlock Text="Overruns" Foreground="{StaticResource Muted}" FontSize="12"/></DockPanel>
-                </Grid>
-              </Border>
+              <TextBlock x:Name="DiscoveryText" Text="" FontSize="11" Foreground="{StaticResource Muted}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}">
+                <TextBlock.Style>
+                  <Style TargetType="TextBlock">
+                    <Style.Triggers>
+                      <Trigger Property="Text" Value="">
+                        <Setter Property="Visibility" Value="Collapsed" />
+                      </Trigger>
+                    </Style.Triggers>
+                  </Style>
+                </TextBlock.Style>
+              </TextBlock>
             </StackPanel>
           </Border>
-          <Grid Grid.Row="1" Margin="0,14,0,13"><Grid.ColumnDefinitions><ColumnDefinition Width="75"/><ColumnDefinition Width="10"/><ColumnDefinition/></Grid.ColumnDefinitions>
-            <StackPanel><TextBlock Text="HTTP port" Style="{StaticResource Label}" FontSize="12"/><TextBox x:Name="HttpPortBox" Text="7356" Padding="8,7" ToolTip="Separate from the audio UDP port" AutomationProperties.Name="Server HTTP port"/></StackPanel>
-            <Button Grid.Column="2" Content="Open server monitor" Click="Dashboard_Click" Padding="8,7" VerticalAlignment="Bottom" ToolTip="Read-only HTTP dashboard; enable it on the server first."/>
+          <Grid Grid.Row="1">
+            <Border x:Name="SourceCard" Margin="0,0,0,8">
+              <StackPanel>
+                <Grid Margin="0,0,0,2">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+                  <TextBlock Text="Audio source" Style="{StaticResource SectionTitle}" Margin="0" VerticalAlignment="Center" />
+                  <Button Grid.Column="1" Content="Refresh" MinHeight="24" Padding="6,2" Background="Transparent" Foreground="{StaticResource Muted}" Click="RefreshDevices_Click" />
+                </Grid>
+                <UniformGrid Margin="0,0,0,7" Columns="2">
+                  <RadioButton x:Name="LoopbackRadio" GroupName="Mode" Content="All PC audio" IsChecked="True" Checked="Mode_Checked" Margin="0,2" Padding="1,2" MinHeight="24" />
+                  <RadioButton x:Name="ProcessRadio" GroupName="Mode" Content="One application" Checked="Mode_Checked" Margin="0,2" Padding="1,2" MinHeight="24" />
+                  <RadioButton x:Name="VirtualRadio" GroupName="Mode" Content="Virtual cable" Checked="Mode_Checked" Margin="0,2" Padding="1,2" MinHeight="24" />
+                  <RadioButton x:Name="CaptureRadio" GroupName="Mode" Content="Other input" Checked="Mode_Checked" Margin="0,2" Padding="1,2" MinHeight="24" />
+                </UniformGrid>
+                <ComboBox x:Name="DeviceCombo" DisplayMemberPath="Name" SelectedValuePath="Id" MinHeight="32" AutomationProperties.Name="Audio device" ToolTip="{Binding SelectedItem.Name, RelativeSource={RelativeSource Self}}" />
+                <ComboBox x:Name="ProcessCombo" DisplayMemberPath="Name" MinHeight="32" Visibility="Collapsed" AutomationProperties.Name="Application process including its children" ToolTip="{Binding SelectedItem.Name, RelativeSource={RelativeSource Self}}" />
+                <TextBlock x:Name="ModeDescription" Text="Sends the selected output. It still plays on this PC." Foreground="{StaticResource Muted}" FontSize="11" Margin="0,3,0,0" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}">
+                  <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                      <Setter Property="Visibility" Value="Collapsed" />
+                      <Style.Triggers>
+                        <DataTrigger Binding="{Binding Text, ElementName=DeviceHint}" Value="">
+                          <Setter Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                      </Style.Triggers>
+                    </Style>
+                  </TextBlock.Style>
+                </TextBlock>
+                <TextBlock x:Name="DeviceHint" Foreground="#F7CC88" FontSize="11" Margin="0,3,0,0" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}">
+                  <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                      <Style.Triggers>
+                        <Trigger Property="Text" Value="">
+                          <Setter Property="Visibility" Value="Collapsed" />
+                        </Trigger>
+                      </Style.Triggers>
+                    </Style>
+                  </TextBlock.Style>
+                </TextBlock>
+                <Button x:Name="CableInfoButton" Content="VB-CABLE website" HorizontalAlignment="Left" Margin="0" Visibility="Collapsed" Click="CableInfo_Click" MinHeight="24" Padding="6,2" />
+              </StackPanel>
+            </Border>
           </Grid>
-          <Expander Grid.Row="2" VerticalAlignment="Stretch" MaxHeight="210" AutomationProperties.Name="Activity log">
-            <Expander.Header><DockPanel LastChildFill="True">
-              <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="10,0,0,0"><Button Content="Copy diagnostics" Click="CopyDiagnostics_Click" ToolTip="Copy version, stream settings, statistics and recent activity with shared keys and identities removed." MinHeight="24" Padding="7,2" Background="Transparent" FontSize="12"/><Button Content="Clear" Click="ClearLog_Click" MinHeight="24" Padding="7,2" Background="Transparent" FontSize="12"/></StackPanel>
-              <TextBlock Text="Activity log" VerticalAlignment="Center"/>
-            </DockPanel></Expander.Header>
-            <TextBox x:Name="ActivityLog" Margin="0,7,0,0" MaxHeight="140" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="11" AutomationProperties.Name="Activity log" ToolTip="Last 200 events. Shared keys are never logged."/>
-          </Expander>
+          <StackPanel Grid.Row="2">
+            <Grid Margin="0,0,0,5">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+              <TextBlock Text="Buffer mode" FontWeight="SemiBold" />
+              <StackPanel Grid.Column="1" Orientation="Horizontal">
+                <RadioButton x:Name="ManualBufferRadio" GroupName="BufferMode" Content="Manual" IsChecked="True" Checked="BufferMode_Changed" Padding="1,2" MinHeight="24" />
+                <RadioButton x:Name="AdaptiveBufferCheck" GroupName="BufferMode" Content="Adaptive" Checked="BufferMode_Changed" ToolTip="The receiver chooses and adjusts its target. Manual milliseconds do not apply." Padding="1,2" MinHeight="24" />
+              </StackPanel>
+            </Grid>
+            <StackPanel x:Name="ManualBufferPanel">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition />
+                  <ColumnDefinition Width="54" />
+                </Grid.ColumnDefinitions>
+                <ComboBox x:Name="BufferPresetCombo" Margin="0,2,0,3" SelectionChanged="BufferPreset_Changed" AutomationProperties.Name="Target buffer preset" ToolTip="Manual presets: less buffering reduces delay; more buffering tolerates network variation. Choose Custom to keep the slider value." MinHeight="32">
+                  <ComboBoxItem Content="Low latency — 20 ms" Tag="20" />
+                  <ComboBoxItem Content="Balanced — 40 ms" Tag="40" />
+                  <ComboBoxItem Content="Robust — 80 ms" Tag="80" />
+                  <ComboBoxItem Content="Custom" />
+                </ComboBox>
+                <TextBlock Grid.Column="1" x:Name="LatencyValue" Text="30 ms" VerticalAlignment="Center" HorizontalAlignment="Right" FontWeight="SemiBold" />
+              </Grid>
+              <Slider x:Name="LatencySlider" Minimum="10" Maximum="200" Value="30" TickFrequency="5" SmallChange="5" LargeChange="10" IsSnapToTickEnabled="True" ValueChanged="LatencySlider_Changed" AutomationProperties.Name="Target buffer milliseconds" Height="24" MinHeight="24" />
+            </StackPanel>
+            <TextBlock x:Name="AdaptiveModeHint" Visibility="Collapsed" Text="Automatic target · live value and history on the right" TextWrapping="Wrap" Foreground="#70D6B5" FontSize="12" Margin="0,7,0,7" />
+          </StackPanel>
+          <StackPanel Grid.Row="4" Margin="0,8,0,6">
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+              <TextBlock Text="Gain" FontWeight="SemiBold" VerticalAlignment="Center" />
+              <TextBlock x:Name="GainValue" Grid.Column="1" Text="100%" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,10,0" />
+              <CheckBox x:Name="MuteCheck" Grid.Column="2" Content="Mute" Checked="Processing_Changed" Unchecked="Processing_Changed" Margin="0,0,10,0" ToolTip="Silence the stream without changing gain." Padding="1,2" />
+              <CheckBox x:Name="LimiterCheck" Grid.Column="3" Content="Limiter" Checked="Processing_Changed" Unchecked="Processing_Changed" ToolTip="Optional peak limiter. Adds 1 ms lookahead." Padding="1,2" />
+            </Grid>
+            <Slider x:Name="GainSlider" Minimum="0" Maximum="200" Value="100" TickFrequency="5" SmallChange="1" LargeChange="10" ValueChanged="GainSlider_Changed" AutomationProperties.Name="Audio gain percent" Height="24" MinHeight="24" />
+            <StackPanel Margin="0,3,0,0" ToolTip="Actual sent PCM after gain, mute and limiter. RMS dBFS with held peaks.">
+              <Grid Margin="0,0,0,5">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition />
+                  <ColumnDefinition Width="Auto" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="Sent level" Foreground="{StaticResource Muted}" FontSize="12" />
+                <TextBlock x:Name="SentClipText" Grid.Column="1" Text="CLIP" Foreground="#FF919C" FontWeight="SemiBold" FontSize="11" Margin="0,0,10,0" Visibility="Hidden" AutomationProperties.Name="Sent audio clipping" />
+                <TextBlock Grid.Column="2" Text="RMS · dBFS" Foreground="{StaticResource Muted}" FontSize="11" />
+              </Grid>
+              <Grid Height="18">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="20" />
+                  <ColumnDefinition />
+                  <ColumnDefinition Width="53" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="L" Foreground="{StaticResource Muted}" VerticalAlignment="Center" FontSize="11" />
+                <Grid x:Name="LeftMeterTrack" Grid.Column="1" Height="8" VerticalAlignment="Center" Background="#344252" ClipToBounds="True">
+                  <Border x:Name="LeftRmsBar" Width="0" HorizontalAlignment="Left" Background="#70D6B5" />
+                  <Border x:Name="LeftPeakMarker" Width="2" HorizontalAlignment="Left" Background="#EDF4FA" Visibility="Hidden" />
+                </Grid>
+                <TextBlock x:Name="LeftLevelText" Grid.Column="2" Text="&#x2212;&#x221E;" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="12" AutomationProperties.Name="{Binding Text, RelativeSource={RelativeSource Self}, StringFormat='Left sent RMS level: {0} dBFS'}" />
+              </Grid>
+              <Grid Height="18">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="20" />
+                  <ColumnDefinition />
+                  <ColumnDefinition Width="53" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="R" Foreground="{StaticResource Muted}" VerticalAlignment="Center" FontSize="11" />
+                <Grid x:Name="RightMeterTrack" Grid.Column="1" Height="8" VerticalAlignment="Center" Background="#344252" ClipToBounds="True">
+                  <Border x:Name="RightRmsBar" Width="0" HorizontalAlignment="Left" Background="#70D6B5" />
+                  <Border x:Name="RightPeakMarker" Width="2" HorizontalAlignment="Left" Background="#EDF4FA" Visibility="Hidden" />
+                </Grid>
+                <TextBlock x:Name="RightLevelText" Grid.Column="2" Text="&#x2212;&#x221E;" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="12" AutomationProperties.Name="{Binding Text, RelativeSource={RelativeSource Self}, StringFormat='Right sent RMS level: {0} dBFS'}" />
+              </Grid>
+            </StackPanel>
+          </StackPanel>
         </Grid>
+        <Border Grid.Column="2" Background="#172330" BorderBrush="#2B3A49" BorderThickness="1" CornerRadius="8" Padding="14,12" Margin="0,0,0,8">
+          <Grid>
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition />
+              <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <StackPanel>
+              <TextBlock x:Name="BufferModeText" Text="Receiver target" Foreground="#70D6B5" FontWeight="SemiBold" />
+              <TextBlock x:Name="BufferTargetText" Text="—" FontSize="36" FontWeight="SemiBold" />
+              <TextBlock x:Name="BufferChangeText" Text="Connect to see the actual target." FontSize="11" Foreground="{StaticResource Muted}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" />
+            </StackPanel>
+            <Grid Grid.Row="1" Margin="0,12,0,8">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+              <Grid.RowDefinitions>
+                <RowDefinition />
+                <RowDefinition />
+                <RowDefinition />
+                <RowDefinition />
+              </Grid.RowDefinitions>
+              <TextBlock Text="Buffer occupancy" Foreground="#F0BD70" />
+              <TextBlock x:Name="BufferText" Grid.Column="1" Text="—" FontWeight="SemiBold" />
+              <TextBlock Grid.Row="1" Text="Output queue" Foreground="{StaticResource Muted}" Margin="0,4,0,0" />
+              <TextBlock x:Name="SinkDelayText" Grid.Row="1" Grid.Column="1" Text="—" Margin="0,4,0,0" />
+              <TextBlock Grid.Row="2" Text="Network RTT" Foreground="{StaticResource Muted}" Margin="0,4,0,0" />
+              <TextBlock x:Name="RttText" Grid.Row="2" Grid.Column="1" Text="—" Margin="0,4,0,0" />
+              <TextBlock Grid.Row="3" Text="Estimated total delay" Foreground="{StaticResource Muted}" Margin="0,4,0,0" ToolTip="Excludes receiver and speaker delay." />
+              <TextBlock x:Name="EndToEndText" Grid.Row="3" Grid.Column="1" Text="—" Margin="0,4,0,0" />
+            </Grid>
+            <Grid Grid.Row="2" Margin="0,4,0,10">
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+              </Grid.RowDefinitions>
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="ChartStatusText" Text="Last 2 minutes" Foreground="{StaticResource Muted}" FontSize="11" />
+                <TextBlock x:Name="ChartMaximumText" Grid.Column="1" Text="40 ms" FontSize="11" Foreground="{StaticResource Muted}" />
+              </Grid>
+              <Canvas x:Name="BufferChart" Grid.Row="1" MinHeight="72" Background="#101B27" ClipToBounds="True" Margin="0,5,0,3" SizeChanged="BufferChart_SizeChanged" AutomationProperties.Name="Two minute target and occupancy history">
+                <Path x:Name="OccupancyHistoryLine" Stroke="#F0BD70" StrokeThickness="1.5" />
+                <Path x:Name="TargetHistoryLine" Stroke="#70D6B5" StrokeThickness="2" />
+                <TextBlock Text="0 ms" Foreground="#8194A8" FontSize="10" Canvas.Left="3" Canvas.Bottom="0" IsHitTestVisible="False" />
+              </Canvas>
+              <Grid Grid.Row="2">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition />
+                  <ColumnDefinition />
+                  <ColumnDefinition />
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="ChartStartText" Text="—" FontSize="10" Foreground="{StaticResource Muted}" />
+                <TextBlock x:Name="ChartMiddleText" Grid.Column="1" Text="Local time" HorizontalAlignment="Center" FontSize="10" Foreground="{StaticResource Muted}" />
+                <TextBlock x:Name="ChartEndText" Grid.Column="2" Text="—" HorizontalAlignment="Right" FontSize="10" Foreground="{StaticResource Muted}" />
+              </Grid>
+              <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,5,0,0">
+                <TextBlock Text="━ Target" Foreground="#70D6B5" FontSize="11" Margin="0,0,12,0" />
+                <TextBlock Text="━ Occupancy" Foreground="#F0BD70" FontSize="11" />
+              </StackPanel>
+            </Grid>
+            <UniformGrid Grid.Row="3" Columns="4" Margin="0,5,0,0">
+              <StackPanel>
+                <TextBlock x:Name="LostText" Text="—" FontWeight="SemiBold" />
+                <TextBlock Text="Lost" FontSize="11" Foreground="{StaticResource Muted}" />
+              </StackPanel>
+              <StackPanel>
+                <TextBlock x:Name="LateText" Text="—" FontWeight="SemiBold" />
+                <TextBlock Text="Late" FontSize="11" Foreground="{StaticResource Muted}" />
+              </StackPanel>
+              <StackPanel>
+                <TextBlock x:Name="UnderrunText" Text="—" FontWeight="SemiBold" />
+                <TextBlock Text="Underruns" FontSize="10" Foreground="{StaticResource Muted}" />
+              </StackPanel>
+              <StackPanel>
+                <TextBlock x:Name="OverrunText" Text="—" FontWeight="SemiBold" />
+                <TextBlock Text="Overruns" FontSize="10" Foreground="{StaticResource Muted}" />
+              </StackPanel>
+            </UniformGrid>
+          </Grid>
+        </Border>
       </Grid>
-      <Grid Grid.Row="3" Margin="22,0"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-        <TextBlock Text="Close hides to the notification area. Audio keeps playing." Foreground="{StaticResource Muted}" FontSize="12" VerticalAlignment="Center"/>
-        <Button Grid.Column="1" Content="Quit AudioLink" Click="Quit_Click" Background="Transparent" Foreground="{StaticResource Muted}" MinHeight="30" Padding="10,4"/>
+      <Grid Grid.Row="3" Margin="18,0">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <Button x:Name="AdvancedButton" Content="Advanced" Click="Advanced_Click" MinHeight="28" Padding="9,4" Background="Transparent" />
+        <Button Grid.Column="1" Content="Activity" Click="Activity_Click" MinHeight="28" Padding="9,4" Background="Transparent" />
+        <Button Grid.Column="2" Content="Server monitor ↗" Click="Dashboard_Click" MinHeight="28" Padding="9,4" Background="Transparent" />
+        <Button Grid.Column="4" Content="Quit AudioLink" Click="Quit_Click" MinHeight="28" Padding="9,4" Background="Transparent" />
       </Grid>
+      <Popup x:Name="AdvancedPopup" PlacementTarget="{Binding ElementName=AdvancedButton}" Placement="Top" StaysOpen="False" AllowsTransparency="True">
+        <Border Width="330" Background="#172330" BorderBrush="#405166" BorderThickness="1" CornerRadius="8" Padding="16">
+          <StackPanel>
+            <TextBlock Text="Advanced settings" FontWeight="SemiBold" Margin="0,0,0,12" />
+            <StackPanel x:Name="ConnectionOptionsPanel">
+              <TextBlock Text="Shared key (optional, Base64)" Style="{StaticResource Label}" />
+              <PasswordBox x:Name="PskBox" AutomationProperties.Name="Shared key in Base64" />
+              <Grid Margin="0,10,0,12">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition />
+                  <ColumnDefinition Width="12" />
+                  <ColumnDefinition />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                  <TextBlock Text="Audio UDP port" Style="{StaticResource Label}" />
+                  <TextBox x:Name="PortBox" Text="7355" AutomationProperties.Name="Audio UDP port" />
+                </StackPanel>
+                <StackPanel Grid.Column="2">
+                  <TextBlock Text="Monitor HTTP port" Style="{StaticResource Label}" />
+                  <TextBox x:Name="HttpPortBox" Text="7356" AutomationProperties.Name="Server HTTP port" />
+                </StackPanel>
+              </Grid>
+            </StackPanel>
+            <CheckBox x:Name="StartWithWindowsCheck" Content="Start with Windows" Checked="StartWithWindows_Changed" Unchecked="StartWithWindows_Changed" />
+            <TextBlock Text="Closing hides to the notification area. Audio keeps playing; Quit stops it." FontSize="11" Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,12,0,0" />
+          </StackPanel>
+        </Border>
+      </Popup>
+      <Popup x:Name="ActivityPopup" PlacementTarget="{Binding ElementName=AdvancedButton}" Placement="Top" StaysOpen="False" AllowsTransparency="True">
+        <Border Width="570" Background="#172330" BorderBrush="#405166" BorderThickness="1" CornerRadius="8" Padding="16">
+          <StackPanel>
+            <DockPanel>
+              <TextBlock Text="Activity log" FontWeight="SemiBold" VerticalAlignment="Center" />
+              <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="Copy diagnostics" Click="CopyDiagnostics_Click" MinHeight="28" Padding="8,4" />
+                <Button Content="Clear" Click="ClearLog_Click" MinHeight="28" Padding="8,4" Margin="6,0,0,0" />
+              </StackPanel>
+            </DockPanel>
+            <TextBox x:Name="ActivityLog" Height="230" Margin="0,10,0,0" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="11" AutomationProperties.Name="Activity log" />
+          </StackPanel>
+        </Border>
+      </Popup>
     </Grid>
   </Border>
 </Window>

@@ -105,7 +105,7 @@ public readonly record struct HelloMessage(uint SampleRate, byte Channels, byte 
                 throw new ArgumentException("Invalid adaptive buffer bounds or initial target.", nameof(AdaptiveBuffer));
             target = (ushort)((TargetLatencyMs / 5) | ((adaptive.MinimumMs / 5) << 6) | ((adaptive.MaximumMs / 5) << 11));
         }
-        destination[5] = AdaptiveBuffer is null ? Format : (byte)0x81;
+        destination[5] = AdaptiveBuffer is null ? Format : AdaptiveBuffer.Value.Predictive ? (byte)0x82 : (byte)0x81;
         destination[6] = FrameMs;
         BinaryPrimitives.WriteUInt16LittleEndian(destination[7..], target);
         destination[9] = (byte)nameBytes;
@@ -121,10 +121,10 @@ public readonly record struct HelloMessage(uint SampleRate, byte Channels, byte 
         {
             var name = new System.Text.UTF8Encoding(false, true).GetString(body[10..]);
             ushort wireTarget = BinaryPrimitives.ReadUInt16LittleEndian(body[7..]);
-            bool adaptive = body[5] == 0x81;
+            bool adaptive = body[5] is 0x81 or 0x82;
             message = new HelloMessage(BinaryPrimitives.ReadUInt32LittleEndian(body), body[4], adaptive ? (byte)1 : body[5], body[6],
                 adaptive ? (ushort)((wireTarget & 63) * 5) : wireTarget, name,
-                adaptive ? new AdaptiveBufferOptions(((wireTarget >> 6) & 31) * 5, ((wireTarget >> 11) & 31) * 5) : null);
+                adaptive ? new AdaptiveBufferOptions(((wireTarget >> 6) & 31) * 5, ((wireTarget >> 11) & 31) * 5, body[5] == 0x82) : null);
             return true;
         }
         catch (System.Text.DecoderFallbackException) { return false; }

@@ -9,6 +9,7 @@ using System.Windows.Threading;
 using System.Windows.Media;
 using Color = System.Windows.Media.Color;
 using ColorConverter = System.Windows.Media.ColorConverter;
+using Point = System.Windows.Point;
 using Microsoft.Win32;
 using NksAudioLink.Client;
 using NksAudioLink.Core;
@@ -29,6 +30,8 @@ public partial class MainWindow : Window
         public bool ApplicationMode { get; init; }
         public string? ProcessNamePreference { get; init; }
         public bool AdaptiveBuffer { get; init; }
+        public bool Muted { get; init; }
+        public bool LimiterEnabled { get; init; }
         public int GainPercent { get; init; } = 100;
         public int TargetLatencyMs { get; init; } = 30;
     }
@@ -55,6 +58,12 @@ public partial class MainWindow : Window
     private DateTime _connectionStartedUtc;
     private StatsMessage? _latestStats;
     private double? _latestRttMs, _latestEstimatedDelayMs;
+    private bool _busyRejected;
+    private readonly Queue<BufferHistoryPoint> _bufferHistory = new();
+    private sealed record BufferHistoryPoint(long Tick, DateTimeOffset Time, int Target, int Occupancy, bool NewSegment);
+    private bool _historyGap = true;
+    private int? _lastTarget;
+    private string? _lastBufferReason;
     private readonly DispatcherTimer _healthTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly DispatcherTimer _meterTimer = new(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(50) };
 
@@ -65,6 +74,7 @@ public partial class MainWindow : Window
         catch (Exception ex) { DetailText.Text = "Could not restore the previous sound device. Check the Windows default output. " + ex.Message; }
         LoadSettings();
         UpdateBufferPreset();
+        UpdateBufferMode();
         RefreshDevices();
         InitTray();
         try
@@ -105,6 +115,9 @@ public partial class MainWindow : Window
             GainSlider.Value = Math.Clamp(saved.GainPercent, 0, 200);
             LatencySlider.Value = Math.Clamp(saved.TargetLatencyMs, 10, 200);
             AdaptiveBufferCheck.IsChecked = saved.AdaptiveBuffer;
+            ManualBufferRadio.IsChecked = !saved.AdaptiveBuffer;
+            MuteCheck.IsChecked = saved.Muted;
+            LimiterCheck.IsChecked = saved.LimiterEnabled;
             _preferredProcessName = saved.ProcessNamePreference;
             ProcessRadio.IsChecked = saved.ApplicationMode;
             VirtualRadio.IsChecked = saved.VirtualCableMode && !saved.ApplicationMode;
@@ -130,6 +143,8 @@ public partial class MainWindow : Window
                 ApplicationMode = ProcessRadio.IsChecked == true,
                 ProcessNamePreference = (ProcessCombo.SelectedItem as CaptureProcess)?.ProcessName ?? _preferredProcessName,
                 AdaptiveBuffer = AdaptiveBufferCheck.IsChecked == true,
+                Muted = MuteCheck.IsChecked == true,
+                LimiterEnabled = LimiterCheck.IsChecked == true,
                 GainPercent = (int)GainSlider.Value,
                 TargetLatencyMs = (int)LatencySlider.Value
             };
@@ -234,7 +249,119 @@ public partial class MainWindow : Window
             LatencySlider.Value = value;
     }
 
+    private void BufferMode_Changed(object sender, RoutedEventArgs e) => UpdateBufferMode();
+    private void UpdateBufferMode()
+    {
+        if (ManualBufferPanel is null || AdaptiveModeHint is null) return;
+        bool adaptive = AdaptiveBufferCheck.IsChecked == true;
+        ManualBufferPanel.Visibility = adaptive ? Visibility.Collapsed : Visibility.Visible;
+        AdaptiveModeHint.Visibility = adaptive ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void Processing_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_activeClient is not { } client || MuteCheck is null || LimiterCheck is null) return;
+        client.Muted = MuteCheck.IsChecked == true;
+        client.LimiterEnabled = LimiterCheck.IsChecked == true;
+    }
+
+    private void Advanced_Click(object sender, RoutedEventArgs e)
+    {
+        ActivityPopup.IsOpen = false;
+        AdvancedPopup.IsOpen = !AdvancedPopup.IsOpen;
+    }
+    private void Activity_Click(object sender, RoutedEventArgs e)
+    {
+        AdvancedPopup.IsOpen = false;
+        ActivityPopup.IsOpen = !ActivityPopup.IsOpen;
+    }
+
+    private void RecordBufferHistory(StatsMessage stats)
+    {
+        var now = DateTimeOffset.Now;
+        long tick = System.Diagnostics.Stopwatch.GetTimestamp();
+        int target = stats.AdaptiveBuffer?.TargetMs ?? (int)LatencySlider.Value;
+        string reason = stats.AdaptiveBuffer is { } status
+            ? System.Text.RegularExpressions.Regex.Replace(status.Reason.ToString(), "(?<=[a-z])(?=[A-Z])", " ").ToLowerInvariant()
+            : "manual target";
+        BufferModeText.Text = stats.AdaptiveBuffer is { } mode
+            ? mode.Predictive ? "Predictive adaptive target" : "Adaptive target" : "Manual target";
+        BufferTargetText.Text = $"{target} ms";
+        bool resumed = _historyGap && _lastTarget is not null;
+        bool changed = _lastTarget != target || _lastBufferReason != reason || _historyGap;
+        if (changed)
+            BufferChangeText.Text = $"{now:HH:mm:ss} · {(resumed ? "resumed · " : "")}{(_lastTarget is { } previous && previous != target ? $"{previous} → {target} ms · " : "")}{reason}";
+        if (_bufferHistory.Count == 0 || changed || _historyGap || System.Diagnostics.Stopwatch.GetElapsedTime(_bufferHistory.Last().Tick, tick) >= TimeSpan.FromMilliseconds(250))
+        {
+            _bufferHistory.Enqueue(new(tick, now, target, stats.BufferMs, _historyGap));
+            _historyGap = false;
+        }
+        while (_bufferHistory.Count > 600 || (_bufferHistory.Count > 0 && System.Diagnostics.Stopwatch.GetElapsedTime(_bufferHistory.Peek().Tick, tick) > TimeSpan.FromMinutes(2)))
+            _bufferHistory.Dequeue();
+        _lastTarget = target;
+        _lastBufferReason = reason;
+        ChartStatusText.Text = "Last 2 minutes · live";
+        if (IsVisible && WindowState != WindowState.Minimized) DrawBufferHistory();
+    }
+
+    private void BufferChart_SizeChanged(object sender, SizeChangedEventArgs e) => DrawBufferHistory();
+    private void DrawBufferHistory()
+    {
+        if (BufferChart is null || TargetHistoryLine is null || _bufferHistory is null) return;
+        if (_bufferHistory.Count == 0)
+        {
+            TargetHistoryLine.Data = OccupancyHistoryLine.Data = null;
+            ChartStartText.Text = ChartEndText.Text = "—";
+            ChartMiddleText.Text = "Local time";
+            return;
+        }
+        var points = _bufferHistory.ToArray();
+        var end = points[^1].Time;
+        var start = end.AddMinutes(-2);
+        double maximum = Math.Max(40, Math.Ceiling(points.Max(p => Math.Max(p.Target, p.Occupancy)) / 20.0) * 20);
+        ChartMaximumText.Text = $"{maximum:0} ms";
+        ChartStartText.Text = start.ToString("HH:mm:ss");
+        ChartMiddleText.Text = start.AddMinutes(1).ToString("HH:mm:ss");
+        ChartEndText.Text = end.ToString("HH:mm:ss");
+        double width = BufferChart.ActualWidth, height = BufferChart.ActualHeight;
+        StreamGeometry Series(bool target)
+        {
+            var geometry = new StreamGeometry();
+            using (var drawing = geometry.Open())
+            {
+                BufferHistoryPoint? previous = null;
+                foreach (var point in points)
+                {
+                    double x = Math.Clamp(1 - System.Diagnostics.Stopwatch.GetElapsedTime(point.Tick, points[^1].Tick).TotalSeconds / 120, 0, 1) * width;
+                    double y = height - Math.Clamp((target ? point.Target : point.Occupancy) / maximum, 0, 1) * height;
+                    if (previous is null || point.NewSegment || System.Diagnostics.Stopwatch.GetElapsedTime(previous.Tick, point.Tick) > TimeSpan.FromSeconds(3))
+                        drawing.BeginFigure(new Point(x, y), false, false); // Never draw through a stats outage.
+                    else
+                    {
+                        if (target && previous.Target != point.Target)
+                            drawing.LineTo(new Point(x, height - previous.Target / maximum * height), true, false);
+                        drawing.LineTo(new Point(x, y), true, false);
+                    }
+                    previous = point;
+                }
+            }
+            geometry.Freeze();
+            return geometry;
+        }
+        TargetHistoryLine.Data = Series(true);
+        OccupancyHistoryLine.Data = Series(false);
+    }
+
     private async void Connect_Click(object sender, RoutedEventArgs e)
+        => await ConnectAsync(takeover: false);
+
+    private async void Takeover_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_busyRejected || _streamStop is not null || StatusText.Text != "Rejected") return;
+        await ConnectAsync(takeover: true);
+    }
+
+    private async Task ConnectAsync(bool takeover)
     {
         if (_quitInProgress) return;
         if (_streamStop is not null)
@@ -244,6 +371,8 @@ public partial class MainWindow : Window
             SetStatus("Disconnecting", "Stopping capture and restoring the previous sound device.");
             return;
         }
+        _busyRejected = false;
+        TakeoverButton.Visibility = Visibility.Collapsed;
         bool virtualMode = VirtualRadio.IsChecked == true;
         (AudioDevice Playback, AudioDevice Capture)? cablePair;
         try { cablePair = virtualMode ? VirtualCableRouting.FindInstalledPair() : null; }
@@ -275,6 +404,8 @@ public partial class MainWindow : Window
             Server = ServerBox.Text.Trim(), Port = port, Gain = GainSlider.Value / 100,
             TargetLatencyMs = (int)LatencySlider.Value,
             AdaptiveBuffer = AdaptiveBufferCheck.IsChecked == true,
+            Muted = MuteCheck.IsChecked == true,
+            LimiterEnabled = LimiterCheck.IsChecked == true,
             PskBase64 = string.IsNullOrWhiteSpace(PskBox.Password) ? null : PskBox.Password.Trim()
         };
         try { config.Validate(); }
@@ -291,6 +422,10 @@ public partial class MainWindow : Window
             catch (Exception ex) { SetStatus("Virtual mode unavailable", ex.Message); return; }
         }
         SaveSettings();
+        _bufferHistory.Clear();
+        _lastTarget = null;
+        _lastBufferReason = null;
+        DrawBufferHistory();
         _streamStop = new CancellationTokenSource();
         _streamFinished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _lastStatsUtc = DateTime.MinValue;
@@ -301,7 +436,7 @@ public partial class MainWindow : Window
         SetStatus("Connecting", $"Server {config.Server}:{config.Port} · {targetProcess?.Name ?? device.Name}");
         var client = targetProcess is not null ? new AudioStreamClient(config, targetProcess) : new AudioStreamClient(config);
         _activeClient = client;
-        ServerCard.IsEnabled = SourceCard.IsEnabled = LatencySlider.IsEnabled = BufferPresetCombo.IsEnabled = AdaptiveBufferCheck.IsEnabled = false;
+        ServerCard.IsEnabled = SourceCard.IsEnabled = ConnectionOptionsPanel.IsEnabled = LatencySlider.IsEnabled = BufferPresetCombo.IsEnabled = AdaptiveBufferCheck.IsEnabled = ManualBufferRadio.IsEnabled = false;
         client.StatsReceived += (stats, rtt) => Dispatcher.BeginInvoke(() =>
         {
             if (ReferenceEquals(_activeClient, client) && _streamStop is { IsCancellationRequested: false })
@@ -318,12 +453,13 @@ public partial class MainWindow : Window
             else if (state == "Waiting for server")
                 SetStatus(state, "The server is not responding. The app is trying to reconnect.");
         });
-        _streamTask = client.RunAsync(device.Id, LoopbackRadio.IsChecked == true, _streamStop.Token);
+        _streamTask = client.RunAsync(device.Id, LoopbackRadio.IsChecked == true, _streamStop.Token, takeover);
         bool serverRejected = false;
         try { await _streamTask; }
         catch (ServerRejectedException ex)
         {
             serverRejected = true;
+            _busyRejected = ex.Reason == RejectReason.Busy;
             SetStatus("Rejected", ex.Message);
         }
         catch (OperationCanceledException) when (_streamStop.IsCancellationRequested) { }
@@ -340,7 +476,8 @@ public partial class MainWindow : Window
             _streamTask = null;
             _activeClient = null;
             ResetStats();
-            ServerCard.IsEnabled = SourceCard.IsEnabled = LatencySlider.IsEnabled = BufferPresetCombo.IsEnabled = AdaptiveBufferCheck.IsEnabled = true;
+            ServerCard.IsEnabled = SourceCard.IsEnabled = ConnectionOptionsPanel.IsEnabled = LatencySlider.IsEnabled = BufferPresetCombo.IsEnabled = AdaptiveBufferCheck.IsEnabled = ManualBufferRadio.IsEnabled = true;
+            TakeoverButton.Visibility = _busyRejected && StatusText.Text == "Rejected" ? Visibility.Visible : Visibility.Collapsed;
             ConnectButton.IsEnabled = !_quitInProgress;
             ConnectButton.Content = "Connect";
             ConnectButton.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(21, 127, 117));
@@ -360,13 +497,11 @@ public partial class MainWindow : Window
         _latestStats = stats;
         _latestRttMs = rtt;
         BufferText.Text = $"{stats.BufferMs} ms";
-        BufferTargetText.Text = stats.AdaptiveBuffer is { } adaptive
-            ? $"Adaptive target: {adaptive.TargetMs} ms · {adaptive.Reason switch { AdaptiveBufferReason.PacketLoss => "packet loss", AdaptiveBufferReason.LatePacket => "late packet", AdaptiveBufferReason.MaximumReached => "maximum", _ => adaptive.Reason.ToString().ToLowerInvariant() }}"
-            : $"Manual target: {(int)LatencySlider.Value} ms";
+        RecordBufferHistory(stats);
         SinkDelayText.Text = $"{stats.SinkDelayMs} ms";
         RttText.Text = $"{rtt:0.0} ms";
         // Capture period is an estimate; WASAPI does not report actual capture-to-wire delay here.
-        _latestEstimatedDelayMs = captureLatencyMs + AudioFrameQueue.TargetBufferMs + Protocol.FrameMs + rtt / 2 + stats.BufferMs + stats.SinkDelayMs;
+        _latestEstimatedDelayMs = captureLatencyMs + AudioFrameQueue.TargetBufferMs + Protocol.FrameMs + rtt / 2 + stats.BufferMs + stats.SinkDelayMs + (_activeClient?.ProcessingLatencyMs ?? 0);
         EndToEndText.Text = $"≈ {_latestEstimatedDelayMs:0} ms";
         LostText.Text = stats.Lost.ToString("N0");
         LateText.Text = stats.Late.ToString("N0");
@@ -404,7 +539,11 @@ public partial class MainWindow : Window
     {
         _latestStats = null;
         _latestRttMs = _latestEstimatedDelayMs = null;
-        BufferTargetText.Text = "Target: —";
+        BufferTargetText.Text = "—";
+        BufferModeText.Text = "Receiver target";
+        _historyGap = true;
+        BufferChangeText.Text = _bufferHistory.Count > 0 ? $"{StatusText.Text} · history paused" : "Connect to see the actual target.";
+        ChartStatusText.Text = _bufferHistory.Count > 0 ? "Previous data · paused" : "Last 2 minutes";
         foreach (var field in new[] { BufferText, SinkDelayText, RttText, EndToEndText, LostText, LateText, UnderrunText, OverrunText })
             field.Text = "\u2014";
     }
@@ -460,7 +599,9 @@ public partial class MainWindow : Window
                 int.TryParse(HttpPortBox.Text, out int httpPort) ? httpPort : 0,
                 _latestStats, _latestRttMs, _latestEstimatedDelayMs,
                 StatusText.Text == "Connected" ? _activeClient?.Levels : null,
-                AdaptiveBufferCheck.IsChecked == true);
+                AdaptiveBufferCheck.IsChecked == true, 20, 100,
+                MuteCheck.IsChecked == true, LimiterCheck.IsChecked == true,
+                _activeClient?.ProcessingLatencyMs ?? (LimiterCheck.IsChecked == true ? 1 : 0));
             string report = ClientDiagnostics.Format(snapshot, _activity,
                 [ServerBox.Text.Trim(), device?.Id, device?.Name, (ProcessCombo.SelectedItem as CaptureProcess)?.Name, (ProcessCombo.SelectedItem as CaptureProcess)?.ProcessName, _preferredProcessName,
                  Environment.UserName, Environment.MachineName, Environment.UserDomainName,

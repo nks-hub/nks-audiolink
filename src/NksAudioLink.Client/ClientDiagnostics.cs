@@ -11,7 +11,8 @@ public enum CaptureMode { Loopback, VirtualCable, Input, Application }
 public sealed record ClientDiagnosticSnapshot(
     string Status, CaptureMode Mode, int TargetBufferMs, double GainPercent, int UdpPort, int HttpPort,
     StatsMessage? Stats, double? RttMs, double? EstimatedDelayMs, AudioLevelSnapshot? Levels,
-    bool AdaptiveBuffer = false, int AdaptiveMinimumMs = 20, int AdaptiveMaximumMs = 100);
+    bool AdaptiveBuffer = false, int AdaptiveMinimumMs = 20, int AdaptiveMaximumMs = 100,
+    bool Muted = false, bool LimiterEnabled = false, int ProcessingLatencyMs = 0);
 
 /// <summary>Formats an allowlisted support report; it does not access the clipboard or network.</summary>
 public static class ClientDiagnostics
@@ -50,9 +51,11 @@ public static class ClientDiagnostics
         report.AppendLine($"Created UTC: {DateTimeOffset.UtcNow:O}");
         report.AppendLine($"Status: {Safe(state.Status)}");
         report.AppendLine($"Capture mode: {state.Mode}");
-        report.AppendLine($"Target buffer: {state.TargetBufferMs} ms; gain: {Number(state.GainPercent)}%");
+        report.AppendLine(state.AdaptiveBuffer ? $"Gain: {Number(state.GainPercent)}%"
+            : $"Target buffer: {state.TargetBufferMs} ms; gain: {Number(state.GainPercent)}%");
+        report.AppendLine($"Muted: {state.Muted}; peak limiter: {state.LimiterEnabled}; processing lookahead: {state.ProcessingLatencyMs} ms");
         report.AppendLine(state.AdaptiveBuffer
-            ? $"Buffer mode: adaptive; requested range: {state.AdaptiveMinimumMs}–{state.AdaptiveMaximumMs} ms"
+            ? $"Buffer mode: predictive adaptive; requested range: {state.AdaptiveMinimumMs}–{state.AdaptiveMaximumMs} ms"
             : "Buffer mode: manual");
         report.AppendLine($"Audio UDP port: {state.UdpPort}; monitor HTTP port: {state.HttpPort}");
         report.AppendLine("Server, audio-device and user identifiers: redacted");
@@ -67,7 +70,7 @@ public static class ClientDiagnostics
         else report.AppendLine("Stream statistics: unavailable");
         if (state.Levels is { } levels)
         {
-            report.AppendLine($"Sent levels after gain (dBFS): L RMS={Number(levels.LeftRmsDbfs)}, peak={Number(levels.LeftPeakDbfs)}; R RMS={Number(levels.RightRmsDbfs)}, peak={Number(levels.RightPeakDbfs)}; clipping={levels.Clipping}");
+            report.AppendLine($"Sent levels after gain/mute/limiter (dBFS): L RMS={Number(levels.LeftRmsDbfs)}, peak={Number(levels.LeftPeakDbfs)}; R RMS={Number(levels.RightRmsDbfs)}, peak={Number(levels.RightPeakDbfs)}; clipping={levels.Clipping}");
         }
         else report.AppendLine("Sent levels: unavailable");
         report.AppendLine($"Recent activity (last {MaxActivityEvents} events; local time {DateTimeOffset.Now:zzz}):");

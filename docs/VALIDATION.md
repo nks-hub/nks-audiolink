@@ -1,5 +1,26 @@
 # Validation
 
+## RC2 verification, 2026-10-23
+
+RC2 replaces the desktop layout, adds predictive buffering with hysteresis and introduces live mute/limiting and explicit busy takeover. The published RC1 remains an immutable historical build. Current checks are distinct from the older physical measurements below.
+
+| Check | RC2 evidence |
+|---|---|
+| Combined Release build/tests | All seven projects built with zero warnings/errors; 168 portable and 57 Windows client/CLI tests passed together. |
+| Core coverage | Portable Cobertura: 96.52% lines and 88.84% branches. |
+| Dashboard/release helpers | 16 Node tests and 36 Python package/version tests passed. Browser checks covered predictive capability/estimate/hold state alongside history, cancellation, offline/error recovery and 320 px layout. |
+| Desktop layout | Actual detached WPF controls and native windows passed manual/adaptive, process, missing virtual-device and busy states at 800×640 and 960×720. Primary controls fit without scrolling. Caption hit testing, maximize/restore, keyboard focus and both secondary panels passed. |
+| Desktop state | Automatic mode hides manual controls without changing the stored manual target. Only acknowledged predictive mode is labeled predictive. Target and occupancy remain distinct; bounded monotonic history breaks across outages. A regression caught and fixed a stale paused-reason label after same-value reconnection. |
+| DSP | 18 numeric tests cover exhaustive PCM16/static-gain bypass equivalence, stereo-linked ceiling, 48-frame delay, tail drain/reset, gain/mute/toggle transitions and zero steady allocations. Four actual UDP regressions cover delayed tails, mute/gain retention, post-effect meters and quiet reconnect without stale audio. |
+| DSP processing cost | An isolated processor benchmark handled 50 seconds of hot stereo PCM using 140.625 ms CPU in bypass and 171.875 ms with limiting: 0.28125% and 0.34375% of one core respectively, with zero bytes allocated inside the warmed processing loops. These are processor-only costs, not whole-application or hardware measurements. |
+| Predictive policy | Deterministic timing tests cover increases before underruns, isolated spikes, alternating jitter without oscillation, ±200 ppm drift, reordered unique packets, duplicates, true loss, discontinuities, warmup, waveform continuity and allocation behavior. |
+| Rare failures | Recurrent 25 ms delayed packets at 30/60/90-second spacing exercise a learned 120-second clean-playback hold. Starting deliberately at 20 ms needed two bounded recovery increases before reaching a safe target; subsequent bursts did not cause fresh loss or repeated downward oscillation. The hold eventually releases after risky tail observations cease. This does not claim prediction of unseen spikes. |
+| Actual authenticated UDP integration | The public harness passed manual, predictive loss and timed-jitter scenarios through the production sender/server. Manual mode delivered 699 packets and 661 nonzero output frames with zero counters. Predictive loss started independently at 40 ms despite a stored manual value of 155 ms; exactly ten deliberate losses caused one underrun and target 50 ms, retained in the learned hold after 38.002 seconds, with no extra errors or session change. |
+| Proactive timing response | A 28.001-second timed-jitter run delivered 5,599 packets and 5,329 nonzero output frames. Target rose 40→50 ms with `PredictiveRisk` at 7.096 seconds while lost/late/underrun counts were still zero; all counters remained zero. The proxy introduced 0–30 ms delay and also observed up to 26.03 ms host scheduling lateness, so this is an application-level integration observation, not an ideal network-only trace or physical audio measurement. |
+| Published RC1 compatibility | The new CLI was exercised against the verified published RC1 Linux binary in isolated WSL. Predictive format `0x82` was rejected with an update/manual-mode explanation and no output session; manual mode connected, received ordinary STATS, exited normally and released the session, with zero jitter counters. |
+
+The native process-isolation measurement under RC1 below remains evidence for the unchanged capture implementation. Clipboard content is not overwritten during RC2 UI verification. A fresh deployed RC2 stability run is recorded separately when completed; earlier runs must not be relabeled as predictive-mode hardware evidence.
+
 ## Release candidate verification, 2026-10-23
 
 The `0.1.0-rc.1` source adds server-owned numeric history, separate native output counters, safe client diagnostic copy, manual buffer presets and consistent product version reporting. A subsequent comparison follow-up adds application-specific capture and opt-in adaptive buffering. Earlier physical measurements below retain their original scope.

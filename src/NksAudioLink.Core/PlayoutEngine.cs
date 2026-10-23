@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 namespace NksAudioLink.Core;
@@ -23,9 +24,15 @@ public sealed class PlayoutEngine
         _controller = new DriftController(targetLatencyMs);
     }
 
-    public bool Receive(ulong sampleIndex, ReadOnlySpan<byte> pcm, bool silent)
+    public bool Receive(ulong sampleIndex, ReadOnlySpan<byte> pcm, bool silent, long? arrivalTimestamp = null)
     {
-        lock (_gate) return _jitter.Enqueue(sampleIndex, pcm, silent);
+        lock (_gate)
+        {
+            long late = _jitter.Late;
+            bool accepted = _jitter.Enqueue(sampleIndex, pcm, silent);
+            _adaptive?.ObserveArrival(sampleIndex, arrivalTimestamp ?? Stopwatch.GetTimestamp(), _jitter.Late > late);
+            return accepted;
+        }
     }
 
     public void Read(Span<short> destination)
@@ -68,6 +75,16 @@ public sealed class PlayoutEngine
     public AdaptiveBufferStatus? GetAdaptiveStatus()
     {
         lock (_gate) return _adaptive?.Status;
+    }
+
+    public PredictiveBufferStatus? GetPredictiveStatus()
+    {
+        lock (_gate) return _adaptive?.GetPrediction();
+    }
+
+    public (int TargetMs, AdaptiveBufferStatus? Adaptive, PredictiveBufferStatus? Predictor) GetBufferControlStatus()
+    {
+        lock (_gate) return (_adaptive?.Status.TargetMs ?? _initialTargetMs, _adaptive?.Status, _adaptive?.GetPrediction());
     }
 
     public int TargetLatencyMs

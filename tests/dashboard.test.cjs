@@ -203,3 +203,23 @@ test('adaptive target, bounds and reason are visible and target history is disti
   page.poll(); await page.cycle(idle, history([],{ nextSequence: 2, serverTimeMs: 2000 }));
   assert.equal(page.elements.get('buffer-policy').textContent, 'No active buffer policy.');
 });
+
+test('predictive capability, estimate and hysteresis state are explicit without relabeling legacy mode', async () => {
+  const page = dashboard(), a = sample(1), b = sample(2);
+  for (const s of [a, b]) {
+    s.session.targetLatencyMs = 50;
+    s.session.adaptiveBuffer = { targetMs: 50, minimumMs: 20, maximumMs: 100, reason: 'PredictiveRisk', changes: 1, predictive: true };
+    s.session.predictor = { estimatedNeedMs: 43.2, jitterSpreadMs: 23, trendMarginMs: 5.2, stableForMs: 1200, samples: 512, warmedUp: true, state: 'WithinDeadband' };
+  }
+  await page.cycle({ ...idle, session: b.session }, history([a,b]));
+  assert.match(page.elements.get('buffer-policy').textContent, /Predictive target 50 ms.*Predicted jitter risk/);
+  assert.match(page.elements.get('predictor').textContent, /Holding within hysteresis band.*43.2 ms/);
+  assert.notEqual(path(page, 'estimate-line'), path(page, 'target-line'));
+  page.poll(); await page.cycle({ ...idle, session: { ...b.session, predictor: { ...b.session.predictor, warmedUp: false, samples: 50 } } }, history([],{ nextSequence: 2, serverTimeMs: 2000 }));
+  assert.match(page.elements.get('predictor').textContent, /Learning arrival timing.*50 samples/);
+  page.poll(); await page.cycle({ ...idle, session: { ...b.session, predictor: { ...b.session.predictor, state: 'FailureHold' } } }, history([],{ nextSequence: 2, serverTimeMs: 2000 }));
+  assert.match(page.elements.get('predictor').textContent, /Holding learned safety margin/);
+  page.poll(); await page.cycle({ ...idle, session: { ...session(2), targetLatencyMs: 40, adaptiveBuffer: { targetMs: 40, minimumMs: 20, maximumMs: 100, reason: 'Initial', changes: 0, predictive: false } } }, history([],{ nextSequence: 2, serverTimeMs: 2000 }));
+  assert.match(page.elements.get('buffer-policy').textContent, /^Adaptive target/);
+  assert.equal(page.elements.get('predictor').textContent, 'No active prediction.');
+});

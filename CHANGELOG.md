@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.1.0-rc.2 — 2026-10-23
+
+Second release candidate, focused on the complete desktop workflow and predictive buffering. RC1 remains an immutable historical release.
+
+### Added
+
+- Prominent buffer mode and live target controls, with a time history that distinguishes the target from actual occupancy. Manual controls are absent in adaptive mode; automatic initialization is independent of the saved manual target.
+- Predictive adaptive buffering based on packet timing, with hysteresis, bounded changes and conservative stable recovery. Explicit capability negotiation distinguishes it from RC1's reactive mode.
+- Live mute that preserves gain, optional stereo-linked peak limiting, and an explicit takeover action after a busy receiver rejects the connection.
+
+### Changed
+
+- Rebuilt the desktop layout: primary receiver/source/buffer/audio controls remain visible at 800×640 and 960×720. Advanced settings and activity use separate panels. Automatic mode hides manual presets and timing; its independent initial target is 40 ms within the configured bounds.
+- A prominent observed target, last-change reason and two-minute graph distinguish the target from real occupancy. A timeout clears current metrics and pauses history; resumption starts a new graph segment and refreshes its status even when the target did not change.
+- Predictive buffering uses a bounded 512-packet timing window, robust delay percentiles and a limited rising-risk forecast. Three high-risk assessments, a deadband and a two-second increase cooldown limit reactions. Decreases require 30 seconds of clean low-risk playback; a learned 120-second hold after a real failure prevents repeatedly returning to an unsafe target.
+- New clients explicitly request predictive capability with HELLO format `0x82` and require STATS marker `0xA2`. New servers retain manual and RC1 reactive compatibility; older servers reject the new mode with an update/manual-mode explanation.
+- Gain and mute transitions ramp over 5 ms. The optional sample-peak limiter links stereo channels, adds 1 ms lookahead and uses a 50 ms release. Delay estimates include its processing delay, and meters represent actual post-processing PCM. Stream interruptions discard delayed old audio before reconnection.
+
+### Validation
+
+- The combined Release check passed 168 portable tests and 57 Windows client/CLI tests, plus 16 dashboard tests and 36 package/version tests. Core coverage was 96.52% of lines and 88.84% of branches.
+- Deterministic predictor tests cover proactive increases, outliers, drift, reorder/duplicates/loss, repeated rare delays, hysteresis, eventual settling and waveform continuity. Native UI checks cover both minimum/default sizes, all source modes, busy rejection, keyboard focus, advanced panels and resumed graphs.
+- Limiter tests cover all PCM16 values at seven static bypass gains, stereo linking, peak bounds, delay/tail handling, live transitions and zero steady processing allocations. Real UDP regressions verify transmitted tails, mute, metering and stale-data exclusion.
+
+### Known pending manual checks
+
+- The owner's flash/click synchronization assessment and physical ten-second network cable recovery check remain pending for a stable release.
+- Physical end-to-end latency remains unmeasured; displayed delay is an estimate.
+
+See [VALIDATION.md](docs/VALIDATION.md) for recorded results and their scope.
+
 ## 0.1.0-rc.1 — 2026-10-23
 
 First release candidate. The remaining listening and physical cable checks below gate the stable `0.1.0` release; they do not prevent publishing an explicitly marked prerelease.

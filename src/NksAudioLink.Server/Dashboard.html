@@ -87,6 +87,7 @@
       <div class="metric"><span class="label">Session duration</span><strong class="value" id="duration">—</strong></div>
     </div>
     <p class="small" id="buffer-policy">Waiting for buffer policy.</p>
+    <p class="small" id="predictor">Prediction is available for predictive sessions.</p>
     <div class="notice" id="notice" role="status">Updates every second.</div>
   </section>
   <section class="panel" aria-labelledby="audio-title">
@@ -152,8 +153,9 @@
       <path d="M0 20H1000 M0 65H1000 M0 110H1000" stroke="#2b3d53" stroke-dasharray="3 6" fill="none"/>
       <path id="line" stroke="#76e0cc" stroke-width="2.5" fill="none" vector-effect="non-scaling-stroke"/>
       <path id="target-line" stroke="#c6d4e5" stroke-width="1.5" stroke-dasharray="5 5" fill="none" vector-effect="non-scaling-stroke"/>
+      <path id="estimate-line" stroke="#edcc6a" stroke-width="1.5" stroke-dasharray="2 4" fill="none" vector-effect="non-scaling-stroke"/>
     </svg>
-    <p class="small">Green: measured buffer occupancy. Dashed: current target. Buffer occupancy and output queue do not measure end-to-end audio latency.</p>
+    <p class="small">Green: measured buffer occupancy. White dashed: current target. Yellow dotted: predicted need. These do not measure end-to-end audio latency.</p>
   </details>
   <section class="panel" aria-labelledby="errors-title">
     <div class="row"><h2 id="errors-title">Error history</h2><span class="small" id="error-scale">Events between samples</span></div>
@@ -174,7 +176,7 @@
   let minutes = 1, samples = [], epoch = '', cursor = 0;
   const duration = seconds => { const n = Math.max(0, Math.floor(seconds)); return `${Math.floor(n / 3600)}:${String(Math.floor(n / 60) % 60).padStart(2, '0')}:${String(n % 60).padStart(2, '0')}`; };
   const nativeKeys = { errors: 'writeErrors', recoveries: 'recoveries', failures: 'failures', underruns: 'underruns', suspensions: 'suspensions' };
-  function clearMetrics() { ['buffer','sink','drift','duration','lost','late','underruns','overruns','duplicates', ...Object.keys(nativeKeys).map(k => `native-${k}`)].forEach(id => text(id, '—')); text('native-session', 'No live output diagnostics.'); text('buffer-policy', 'No active buffer policy.'); }
+  function clearMetrics() { ['buffer','sink','drift','duration','lost','late','underruns','overruns','duplicates', ...Object.keys(nativeKeys).map(k => `native-${k}`)].forEach(id => text(id, '—')); text('native-session', 'No live output diagnostics.'); text('buffer-policy', 'No active buffer policy.'); text('predictor', 'No active prediction.'); }
   const db = value => Number.isFinite(value) ? Math.max(-90, Math.min(0, value)) : null;
   const dbText = value => value <= -90 ? '−∞' : value.toFixed(1);
   const levelX = value => (value + 90) * 1000 / 90;
@@ -220,10 +222,11 @@
       }
       el(id).setAttribute('d', parts.join(' '));
     }
-    const buffers = samples.flatMap(s => [s.session?.bufferMs, s.session?.targetLatencyMs]).filter(Number.isFinite);
+    const buffers = samples.flatMap(s => [s.session?.bufferMs, s.session?.targetLatencyMs, s.session?.predictor?.estimatedNeedMs]).filter(Number.isFinite);
     const max = Math.max(50, ...buffers);
     path('line', s => s.session?.bufferMs, v => 110 - Math.max(0, v) * 90 / max);
     path('target-line', s => s.session?.targetLatencyMs, v => 110 - Math.max(0, v) * 90 / max);
+    path('estimate-line', s => s.session?.predictor?.estimatedNeedMs, v => 110 - Math.max(0, v) * 90 / max);
     text('scale', `${samples.length} samples · last ${minutes} min · 0–${max} ms`);
     for (const side of ['left', 'right']) {
       path(`${side}-level-line`, s => db(s.session?.levels?.[`${side}RmsDbfs`]), v => -v * 108 / 90);
@@ -281,9 +284,13 @@
         text('buffer', s.bufferMs); text('sink', s.sinkDelayMs); text('drift', s.ratioPpm); text('duration', duration(s.connectedSeconds));
         ['lost','late','underruns','overruns','duplicates'].forEach(id => text(id, s[id].toLocaleString()));
         text('notice', `Session ${s.id} · Last packet ${Math.round(s.lastPacketAgeMs)} ms ago`);
-        const reasons = { Initial: 'Initial target', Underrun: 'Jitter underrun', PacketLoss: 'Packet loss', LatePacket: 'Late packet', Stable: 'Stable playback', MaximumReached: 'Maximum reached' };
+        const reasons = { Initial: 'Initial target', Underrun: 'Jitter underrun', PacketLoss: 'Packet loss', LatePacket: 'Late packet', Stable: 'Stable playback', MaximumReached: 'Maximum reached', PredictiveRisk: 'Predicted jitter risk' };
         const adaptive = s.adaptiveBuffer;
-        text('buffer-policy', adaptive ? `Adaptive target ${adaptive.targetMs} ms (${adaptive.minimumMs}–${adaptive.maximumMs} ms) · ${reasons[adaptive.reason] ?? 'Adaptation'} · ${adaptive.changes} changes` : `Manual target ${s.targetLatencyMs ?? '—'} ms`);
+        text('buffer-policy', adaptive ? `${adaptive.predictive ? 'Predictive' : 'Adaptive'} target ${adaptive.targetMs} ms (${adaptive.minimumMs}–${adaptive.maximumMs} ms) · ${reasons[adaptive.reason] ?? 'Adaptation'} · ${adaptive.changes} changes` : `Manual target ${s.targetLatencyMs ?? '—'} ms`);
+        const p = s.predictor;
+        const states = { WarmingUp: 'Learning arrival timing', WaitingForAudio: 'Waiting for audio', AtMaximum: 'Risk exceeds maximum target', Cooldown: 'Holding after increase', FailureHold: 'Holding learned safety margin', RiskPending: 'Confirming rising risk', Settling: 'Stable margin before decrease', WithinDeadband: 'Holding within hysteresis band' };
+        if (p && [p.estimatedNeedMs, p.jitterSpreadMs, p.trendMarginMs, p.stableForMs].every(Number.isFinite))
+          text('predictor', p.warmedUp ? `${states[p.state] ?? 'Tracking'} · estimated need ${p.estimatedNeedMs.toFixed(1)} ms · jitter spread ${p.jitterSpreadMs.toFixed(1)} ms · trend margin ${p.trendMarginMs.toFixed(1)} ms · stable ${(p.stableForMs / 1000).toFixed(1)} s` : `Learning arrival timing · ${p.samples} samples; at least 100 samples and 0.5 s required.`);
       } else { clearLevels(); text('notice', 'Waiting for an audio client. The server is ready.'); }
       for (const [id, key] of Object.entries(nativeKeys)) text(`native-${id}`, Number.isFinite(data.nativeOutput?.[key]) ? data.nativeOutput[key].toLocaleString() : '—');
       text('native-session', s?.nativeOutput ? `Current session: ${s.nativeOutput.writeErrors} native write errors, ${s.nativeOutput.recoveries} successful recoveries, ${s.nativeOutput.failures} failures. Session counts reset on reconnect.` : 'No active ALSA diagnostics. Lifetime totals retain errors from closed sessions.');

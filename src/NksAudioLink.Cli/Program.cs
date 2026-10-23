@@ -29,7 +29,8 @@ try
         Console.WriteLine("send: stream audio; test-tone: send a 440 Hz test tone.");
         Console.WriteLine("--gain 1 keeps the original level; higher values may clip.");
         Console.WriteLine("send --process PID captures one application and its child processes (updated Windows 10/11); use processes to list candidates. Do not combine with --mode or --device.");
-        Console.WriteLine("send --adaptive-buffer true [--buffer-min 20] [--buffer-max 100] opts into bounded server buffering. Bounds must be multiples of 5 within 20..100 ms; the initial --latency is clamped to them.");
+        Console.WriteLine("send --adaptive-buffer true [--buffer-min 20] [--buffer-max 100] opts into predictive buffering. Bounds must be multiples of 5 within 20..100 ms. Do not combine with --latency; the receiver selects its own target.");
+        Console.WriteLine("send --mute true|false silences output without changing --gain; --limiter true|false enables the 1 ms lookahead peak limiter. Both are disabled by default.");
         Console.WriteLine("Explicit options override --config values regardless of argument order.");
         return;
     }
