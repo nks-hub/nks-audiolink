@@ -53,6 +53,12 @@ public sealed record ClientConfig
     public string Server { get; init; } = "127.0.0.1";
     public int Port { get; init; } = 7355;
     public int TargetLatencyMs { get; init; } = 30;
+    public bool AdaptiveBuffer { get; init; }
+    public int AdaptiveMinLatencyMs { get; init; } = 20;
+    public int AdaptiveMaxLatencyMs { get; init; } = 100;
+    [System.Text.Json.Serialization.JsonIgnore]
+    public int EffectiveInitialLatencyMs => AdaptiveBuffer
+        ? Math.Clamp(TargetLatencyMs, AdaptiveMinLatencyMs, AdaptiveMaxLatencyMs) : TargetLatencyMs;
     public double Gain { get; init; } = 1;
     public string? PskBase64 { get; init; }
 
@@ -67,6 +73,10 @@ public sealed record ClientConfig
             throw new InvalidDataException("Invalid client settings. Check the server address, port, gain, and target buffer.");
         if (PskBase64 is not null)
             _ = (new ServerConfig { PskBase64 = PskBase64 }).GetPsk();
+        if (AdaptiveMinLatencyMs is < 20 or > 100 || AdaptiveMaxLatencyMs is < 20 or > 100 ||
+            AdaptiveMinLatencyMs % Protocol.FrameMs != 0 || AdaptiveMaxLatencyMs % Protocol.FrameMs != 0 ||
+            AdaptiveMinLatencyMs > AdaptiveMaxLatencyMs)
+            throw new InvalidDataException("Invalid adaptive buffer range. Use multiples of 5 ms between 20 and 100 ms, with minimum no greater than maximum.");
     }
 }
 

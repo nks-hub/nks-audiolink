@@ -21,12 +21,15 @@ try
         Console.WriteLine("NKS AudioLink commands:");
         Console.WriteLine("NksAudioLink.Cli.exe --version");
         Console.WriteLine("NksAudioLink.Cli.exe devices");
+        Console.WriteLine("NksAudioLink.Cli.exe processes");
         Console.WriteLine("NksAudioLink.Cli.exe discover [--port PORT] [--config FILE]");
         Console.WriteLine("NksAudioLink.Cli.exe send --server HOST [--port PORT] [--latency MS] [--mode loopback|capture] [--device ID] [--seconds N] [--gain 0..4] [--takeover true|false] [--config FILE]");
         Console.WriteLine("NksAudioLink.Cli.exe test-tone --server HOST [--port PORT] [--seconds N] [--gain 0..4] [--config FILE]");
         Console.WriteLine("devices: list audio devices; discover: find servers on the local network.");
         Console.WriteLine("send: stream audio; test-tone: send a 440 Hz test tone.");
         Console.WriteLine("--gain 1 keeps the original level; higher values may clip.");
+        Console.WriteLine("send --process PID captures one application and its child processes (updated Windows 10/11); use processes to list candidates. Do not combine with --mode or --device.");
+        Console.WriteLine("send --adaptive-buffer true [--buffer-min 20] [--buffer-max 100] opts into bounded server buffering. Bounds must be multiples of 5 within 20..100 ms; the initial --latency is clamped to them.");
         Console.WriteLine("Explicit options override --config values regardless of argument order.");
         return;
     }
@@ -34,6 +37,11 @@ try
     {
         foreach (var device in WasapiSource.ListDevices())
             Console.WriteLine($"{(device.IsRender ? "render " : "capture")} {device.Name} [{device.Id}]");
+        return;
+    }
+    if (args[0] == "processes")
+    {
+        foreach (var process in CaptureProcess.List()) Console.WriteLine(process.Name);
         return;
     }
     if (args[0] == "discover")
@@ -97,9 +105,14 @@ try
         using var stop = new CancellationTokenSource();
         if (sendSeconds > 0) stop.CancelAfter(TimeSpan.FromSeconds(sendSeconds));
         Console.CancelKeyPress += (_, e) => { e.Cancel = true; stop.Cancel(); };
-        var client = new AudioStreamClient(sendConfig);
+        var client = options.ProcessId is { } targetPid
+            ? new AudioStreamClient(sendConfig, CaptureProcess.FromId(targetPid)) : new AudioStreamClient(sendConfig);
         client.StateChanged += Console.WriteLine;
-        client.StatsReceived += (stats, rttMs) => Console.WriteLine($"buffer={stats.BufferMs}ms sink={stats.SinkDelayMs}ms rtt={rttMs:F1}ms underruns={stats.Underruns} lost={stats.Lost} late={stats.Late}");
+        client.StatsReceived += (stats, rttMs) => Console.WriteLine(
+            $"buffer={stats.BufferMs}ms sink={stats.SinkDelayMs}ms rtt={rttMs:F1}ms underruns={stats.Underruns} lost={stats.Lost} late={stats.Late}" +
+            (stats.AdaptiveBuffer is { } adaptive
+                ? $" adaptiveTarget={adaptive.TargetMs}ms range={adaptive.MinimumMs}..{adaptive.MaximumMs}ms reason={adaptive.Reason} changes={adaptive.Changes}"
+                : " mode=manual"));
         await client.RunAsync(deviceId, loopback, stop.Token, takeover);
         return;
     }

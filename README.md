@@ -24,6 +24,8 @@ Disconnected interface preview rendered without opening audio devices. The optio
 - 🖥️ **Desktop and web monitoring** - a compact borderless Windows app with a waveform icon, About and activity log; an optional read-only server dashboard with buffer history and a JSON statistics API on a separately configured HTTP port (suggested: 7356).
 - 🎚️ **Stereo signal meters** - actual PCM RMS levels, held peaks and clipping indicators in the client and server dashboard. Server history retains up to one hour of signal, buffer and error measurements, with 1/5/15/60-minute graphs that survive page refresh.
 - 🛠️ **Practical diagnostics** - manual 20/40/80 ms buffer presets, custom values, a redacted client diagnostic report, and separate native ALSA recovery counters.
+- 🎯 **One application** - capture a selected Windows process and its children while leaving other applications out of the stream. Uses native process loopback without changing default audio routing; capability is checked at activation.
+- 📶 **Adaptive buffering** - optional automatic target adjustment within 20–100 ms, with fast increases after stream errors, slow decreases after stable playback, and the actual target/reason visible in the client and dashboard. Manual buffering remains the default.
 - 🔒 **Access control** - `allowCidrs` restricts client addresses. An optional shared key authenticates packets with HMAC. Audio is not encrypted.
 
 [VB-CABLE](https://vb-audio.com/Cable/) is a separate VB-Audio driver. AudioLink does not bundle it; ordinary WASAPI loopback capture does not require it.
@@ -105,7 +107,7 @@ dotnet publish src/NksAudioLink.Server/NksAudioLink.Server.csproj \
 
 | Check | Result and scope |
 |---|---|
-| Automated tests | The 2026-10-23 candidate review passed 106 portable Core/server/HTTP/queue/meter tests, 32 Windows client/CLI tests, 14 dashboard tests and 36 package/version/release-note tests. Core coverage from the portable suite is **90.57% of lines** and **81.38% of branches**. |
+| Automated tests | The 2026-10-23 candidate review passed 134 portable Core/server/HTTP/queue/meter tests, 48 Windows client/CLI tests, 15 dashboard tests and 36 package/version/release-note tests. Core coverage from the portable suite is **96.22% of lines** and **85.82% of branches**. Real process isolation and authenticated adaptive-buffer integration were exercised separately. |
 | LAN and physical ALSA | The .NET 9.0.20 server and Windows client ran for **600 seconds with a 30 ms target buffer**. All 60 client samples showed zero lost or late frames, underruns and overruns. ALSA was RUNNING in all 120 samples; the server process and session remained unchanged. A separate 10 ms run accumulated late frames. |
 | Tone and virtual mode | A 440 Hz Windows-to-Linux WAV test lasted 5.095 seconds with RMS 8,484 and no overruns or late frames. CABLE Input to CABLE Output transport was also confirmed by WAV analysis. |
 | UI latency estimate | One live observation was **about 74 ms**: 10 ms WASAPI capture, about 15 ms client queue, a 5 ms frame, about 0.25 ms half-RTT, 25 ms server buffer and 19 ms ALSA queue delay. This is a sum of known stages, not a physical end-to-end measurement. |

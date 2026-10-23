@@ -27,6 +27,10 @@ jobs:
           dotnet new globaljson --sdk-version ${{ matrix.sdk }} --roll-forward disable --force
           dotnet --version
       - run: dotnet build NksAudioLink.sln --configuration Release
+      - name: Build opt-in process capture harness
+        run: dotnet build tests/process-capture --configuration Release
+      - name: Build opt-in adaptive integration harness
+        run: dotnet build tests/adaptive-buffer --configuration Release
       - run: dotnet test NksAudioLink.sln --configuration Release --no-build
   linux:
     runs-on: ubuntu-latest

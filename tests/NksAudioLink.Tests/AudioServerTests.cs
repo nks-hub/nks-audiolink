@@ -7,6 +7,68 @@ namespace NksAudioLink.Tests;
 
 public class AudioServerTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task HelloNegotiatesOnlyTheRequestedBufferModeAndNativeErrorsCannotAdaptIt(bool adaptive)
+    {
+        var sink = new DiagnosticSink();
+        var server = new AudioServer(Config(FreePort()), _ => sink);
+        using var stop = new CancellationTokenSource();
+        Task running = server.RunAsync(stop.Token);
+        using var udp = Client(server.GetStatus().UdpPort);
+        try
+        {
+            byte[] body = new byte[74];
+            int length = new HelloMessage(48000, 2, 1, 5, 40, "test", adaptive ? new(20, 100) : null).Write(body);
+            await Send(udp, PacketType.Hello, 51, body[..length]);
+            var reply = await Receive(udp, PacketType.Stats);
+            Assert.Equal(adaptive ? StatsMessage.AdaptiveSize : StatsMessage.Size, reply.Body.Length);
+            Assert.True(StatsMessage.TryRead(reply.Body, out var stats));
+            Assert.Equal(adaptive, stats.AdaptiveBuffer.HasValue);
+            var status = server.GetStatus().Session!;
+            Assert.Equal(40, status.TargetLatencyMs);
+            Assert.Equal(adaptive, status.AdaptiveBuffer.HasValue);
+            sink.Log.Record(-32, 0); // Device recovery is not network jitter evidence.
+            await Send(udp, PacketType.Hello, 51, body[..length]);
+            reply = await Receive(udp, PacketType.Stats);
+            Assert.True(StatsMessage.TryRead(reply.Body, out stats));
+            if (adaptive) Assert.Equal(new AdaptiveBufferStatus(40, 20, 100, AdaptiveBufferReason.Initial, 0), stats.AdaptiveBuffer);
+            Assert.Equal(40, server.GetStatus().Session!.TargetLatencyMs);
+        }
+        finally
+        {
+            stop.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => running.WaitAsync(TimeSpan.FromSeconds(5)));
+        }
+    }
+
+    [Fact]
+    public async Task MalformedAdaptiveBoundsAreExplicitlyRejectedWithoutOpeningSink()
+    {
+        int opens = 0;
+        var server = new AudioServer(Config(FreePort()), _ => { opens++; return new CountingSink(); });
+        using var stop = new CancellationTokenSource();
+        Task running = server.RunAsync(stop.Token);
+        using var udp = Client(server.GetStatus().UdpPort);
+        try
+        {
+            byte[] body = HelloBody();
+            body[5] = 0x81;
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(body.AsSpan(7), (ushort)(6 | 4 << 6 | 31 << 11));
+            await Send(udp, PacketType.Hello, 52, body);
+            var rejected = await Receive(udp, PacketType.Reject);
+            Assert.Equal(new byte[] { (byte)RejectReason.UnsupportedFormat }, rejected.Body);
+            Assert.Equal(0, opens);
+            Assert.Null(server.GetStatus().Session);
+        }
+        finally
+        {
+            stop.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => running.WaitAsync(TimeSpan.FromSeconds(5)));
+        }
+    }
+
     [Fact]
     public async Task NativeOutputTotalsSurviveClosedSessionsWhileNewSessionStartsAtZero()
     {

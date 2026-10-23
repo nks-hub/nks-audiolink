@@ -4,6 +4,8 @@ Checked against primary upstream documentation on **2026-10-23**. This is a comp
 
 AudioLink's current scope is one Windows source feeding one Linux ALSA output on a trusted LAN or VPN. Playback-device loopback uses WASAPI without installing a virtual audio driver; optional virtual-device routing requires a separately installed VB-CABLE. Transport is fixed at 48 kHz, signed 16-bit stereo PCM over UDP, with 5 ms frames. The server accepts one active session. See [Windows setup](WINDOWS.md), [Linux setup](INSTALL.md) and the [wire protocol](PROTOCOL.md).
 
+Two additional usability references have now led to audio-path changes: SonoBus's automatic receive buffering and OBS's application-specific capture. AudioLink uses its own bounded buffer policy and NAudio's existing MIT-licensed native capture wrapper; no competitor implementation was copied.
+
 ## Choosing an architecture
 
 | Project | Capture, routing and formats | Receiver model and practical fit |
@@ -15,6 +17,8 @@ AudioLink's current scope is one Windows source feeding one Linux ALSA output on
 | **[SonoBus](https://sonobus.net/)** | Audio-device input or DAW plugin; uncompressed 16/24/32-bit PCM or Opus | Peer-to-peer groups on LAN or Internet, with mixing and recording. Relevant when bidirectional collaboration or several participants matter more than a dedicated Windows-to-ALSA service. |
 
 These are different wire protocols. AudioLink cannot currently send to their receivers or accept their streams.
+
+[OBS application audio capture](https://obsproject.com/kb/application-audio-capture-guide) is a focused capture reference rather than a replacement Windows-to-ALSA transport. Its useful workflow is selecting one application instead of the entire desktop. AudioLink now offers that source mode, including the selected process's children. Microsoft documents the [native process-loopback API](https://learn.microsoft.com/en-us/samples/microsoft/windows-classic-samples/applicationloopbackaudio-sample/) with an original build 20348 requirement; OBS documents updated Windows 10 2004+ support. AudioLink checks actual activation and was exercised successfully on build 19045, while reporting unsupported capability explicitly on systems that lack it.
 
 ## Setup, diagnostics and recovery
 
@@ -55,7 +59,9 @@ Project licenses are [AudioLink MIT](../LICENSE), [Scream MS-PL](https://github.
 | **Open — human check** | Assess the prepared flash/click video on the actual playback path and record acceptable/unacceptable synchronization. | [remaining hardware checks](VALIDATION.md#remaining-hardware-checks), [reference verifier](../tests/latency/verify_flash_click.py) |
 | **Open — human check** | Physically disconnect the PC network cable for ten seconds, reconnect, and record recovery/device release. A proxy outage does not exercise physical link/adapter behavior. | [remaining hardware checks](VALIDATION.md#remaining-hardware-checks), [recovery harness limits](../tests/recovery/README.md) |
 | **Open — autonomous release work** | Publish the verified `v0.1.0-rc.1` candidate with both remaining human checks stated; promote to stable `v0.1.0` after their results are recorded. This does not require rerunning already-passed checks without a relevant change. | [release workflow](../.github/workflows/release.yml), [acceptance checklist](../TODO.md#current-acceptance-checklist), [release records](https://github.com/nks-hub/nks-audiolink/releases) |
-| **Deferred** | Add per-application capture only with a defined Windows support matrix and fallback; add formats/channels only with protocol negotiation and compatible tests. | Current [capture modes](WINDOWS.md) and [fixed protocol](PROTOCOL.md) define the boundary. No implementation is claimed. |
+| **Done — audio-path follow-up** | Add optional adaptive buffering, inspired by SonoBus: bounded target increases after underruns/loss/late packets, a cooldown, slow decreases after stable playback and visible reasons. Manual mode and old-client compatibility remain intact; adaptive requests require an explicit acknowledgment. | [controller](../src/NksAudioLink.Core/AdaptiveBuffer.cs), [engine tests](../tests/NksAudioLink.Tests/AdaptiveBufferTests.cs), [client negotiation tests](../tests/NksAudioLink.Client.Tests/AdaptiveBufferClientTests.cs), [protocol](PROTOCOL.md) |
+| **Done — audio-path follow-up** | Add one-application capture, informed by OBS: process-tree inclusion, other-process exclusion, native capability checks, pinned process identity and terminal handling when the selected application exits. Keep whole-device capture available as a separate mode. | [process source](../src/NksAudioLink.Client/WasapiSource.cs), [identity tests](../tests/NksAudioLink.Client.Tests/CaptureProcessTests.cs), [actual two-process isolation harness](../tests/process-capture/README.md), [Windows guide](WINDOWS.md) |
+| **Deferred** | Add formats/channels only with protocol negotiation and compatible tests. | The current [fixed audio format](PROTOCOL.md) defines the boundary. No multichannel or codec implementation is claimed. |
 | **Deferred** | Consider synchronized multiroom, multicast, VBAN interoperability or Internet collaboration only for a concrete new use case. Each changes clocking, routing or transport scope. | Current [single-session architecture](../README.md#how-it-works); the alternatives above already address these distinct needs. |
 
 The next priority is finishing the two physical acceptance checks and publishing an accurately labeled candidate, while keeping the verified single-receiver path stable. New transports, mixer functions or lower latency targets need a separate design and comparative measurement before they become release commitments.

@@ -11,7 +11,8 @@ public sealed record SessionStatus(
     uint Id, long ConnectedSeconds, double LastPacketAgeMs,
     int BufferMs, int SinkDelayMs, int RatioPpm,
     long Lost, long Late, long Underruns, long Overruns, long Duplicates,
-    AudioLevelSnapshot? Levels = null, NativeOutputStatus? NativeOutput = null);
+    AudioLevelSnapshot? Levels = null, NativeOutputStatus? NativeOutput = null,
+    int TargetLatencyMs = 30, AdaptiveBufferStatus? AdaptiveBuffer = null);
 
 /// <summary>ALSA events, independent of packet loss and jitter-buffer underruns.</summary>
 public readonly record struct NativeOutputStatus(

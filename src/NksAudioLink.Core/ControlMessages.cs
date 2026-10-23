@@ -4,13 +4,17 @@ using System.Text;
 namespace NksAudioLink.Core;
 
 public readonly record struct StatsMessage(bool Accepted, ushort BufferMs, ushort SinkDelayMs,
-    uint Underruns, uint Overruns, uint Lost, uint Late, int RatioPpm, ulong EchoTicks)
+    uint Underruns, uint Overruns, uint Lost, uint Late, int RatioPpm, ulong EchoTicks,
+    AdaptiveBufferStatus? AdaptiveBuffer = null)
 {
     public const int Size = 33;
+    public const int AdaptiveSize = 45;
 
     public int Write(Span<byte> destination)
     {
-        if (destination.Length < Size) throw new ArgumentException("Stats buffer too small.", nameof(destination));
+        int size = AdaptiveBuffer is null ? Size : AdaptiveSize;
+        if (destination.Length < size) throw new ArgumentException("Stats buffer too small.", nameof(destination));
+        if (AdaptiveBuffer is { IsValid: false }) throw new ArgumentException("Invalid adaptive buffer status.", nameof(AdaptiveBuffer));
         destination[0] = Accepted ? (byte)1 : (byte)0;
         BinaryPrimitives.WriteUInt16LittleEndian(destination[1..], BufferMs);
         BinaryPrimitives.WriteUInt16LittleEndian(destination[3..], SinkDelayMs);
@@ -20,13 +24,31 @@ public readonly record struct StatsMessage(bool Accepted, ushort BufferMs, ushor
         BinaryPrimitives.WriteUInt32LittleEndian(destination[17..], Late);
         BinaryPrimitives.WriteInt32LittleEndian(destination[21..], RatioPpm);
         BinaryPrimitives.WriteUInt64LittleEndian(destination[25..], EchoTicks);
-        return Size;
+        if (AdaptiveBuffer is { } adaptive)
+        {
+            destination[33] = 0xA1;
+            destination[34] = (byte)adaptive.Reason;
+            BinaryPrimitives.WriteUInt16LittleEndian(destination[35..], (ushort)adaptive.TargetMs);
+            BinaryPrimitives.WriteUInt16LittleEndian(destination[37..], (ushort)adaptive.MinimumMs);
+            BinaryPrimitives.WriteUInt16LittleEndian(destination[39..], (ushort)adaptive.MaximumMs);
+            BinaryPrimitives.WriteUInt32LittleEndian(destination[41..], adaptive.Changes);
+        }
+        return size;
     }
 
     public static bool TryRead(ReadOnlySpan<byte> body, out StatsMessage message)
     {
         message = default;
-        if (body.Length != Size || body[0] > 1) return false;
+        if (body.Length is not (Size or AdaptiveSize) || body[0] > 1) return false;
+        AdaptiveBufferStatus? adaptive = null;
+        if (body.Length == AdaptiveSize)
+        {
+            if (body[33] != 0xA1) return false;
+            adaptive = new AdaptiveBufferStatus(BinaryPrimitives.ReadUInt16LittleEndian(body[35..]),
+                BinaryPrimitives.ReadUInt16LittleEndian(body[37..]), BinaryPrimitives.ReadUInt16LittleEndian(body[39..]),
+                (AdaptiveBufferReason)body[34], BinaryPrimitives.ReadUInt32LittleEndian(body[41..]));
+            if (!adaptive.Value.IsValid) return false;
+        }
         message = new StatsMessage(body[0] == 1,
             BinaryPrimitives.ReadUInt16LittleEndian(body[1..]),
             BinaryPrimitives.ReadUInt16LittleEndian(body[3..]),
@@ -35,7 +57,7 @@ public readonly record struct StatsMessage(bool Accepted, ushort BufferMs, ushor
             BinaryPrimitives.ReadUInt32LittleEndian(body[13..]),
             BinaryPrimitives.ReadUInt32LittleEndian(body[17..]),
             BinaryPrimitives.ReadInt32LittleEndian(body[21..]),
-            BinaryPrimitives.ReadUInt64LittleEndian(body[25..]));
+            BinaryPrimitives.ReadUInt64LittleEndian(body[25..]), adaptive);
         return true;
     }
 }

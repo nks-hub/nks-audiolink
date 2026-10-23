@@ -11,6 +11,9 @@ namespace NksAudioLink.Client;
 public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, IAudioSource>? sourceFactory = null)
 {
     private readonly Func<IClientDatagramSocket> _socketFactory = () => new ClientDatagramSocket();
+    private readonly Func<CancellationToken, Task<IAudioSource>>? _asyncSourceFactory;
+    public AudioStreamClient(ClientConfig config, CaptureProcess process) : this(config) =>
+        _asyncSourceFactory = token => WasapiSource.CreateProcessAsync(process, token);
     internal AudioStreamClient(ClientConfig config, Func<string?, bool, IAudioSource> sourceFactory,
         Func<IClientDatagramSocket> socketFactory) : this(config, sourceFactory) => _socketFactory = socketFactory;
     private double _gain = config.Gain;
@@ -85,7 +88,9 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
         using IClientDatagramSocket udp = _socketFactory();
         udp.Connect(new IPEndPoint(address, config.Port));
         using var timerResolution = new WindowsTimerResolution();
-        using IAudioSource source = sourceFactory is null
+        using IAudioSource source = _asyncSourceFactory is not null
+            ? await _asyncSourceFactory(runToken).ConfigureAwait(false)
+            : sourceFactory is null
             ? new WasapiSource(deviceId, loopback)
             : sourceFactory(deviceId, loopback);
         Exception? captureFailure = null;
@@ -119,9 +124,13 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
             catch (SocketException error) when (IsTransient(error)) { ConnectionInterrupted(); }
         }
 
+        int WriteHello() => new HelloMessage(48000, 2, 1, 5, (ushort)config.EffectiveInitialLatencyMs,
+            Environment.MachineName, config.AdaptiveBuffer
+                ? new AdaptiveBufferOptions(config.AdaptiveMinLatencyMs, config.AdaptiveMaxLatencyMs) : null).Write(body);
+
         async Task SendHelloAsync()
         {
-            int size = new HelloMessage(48000, 2, 1, 5, (ushort)config.TargetLatencyMs, Environment.MachineName).Write(body);
+            int size = WriteHello();
             await SendAsync(PacketType.Hello, Volatile.Read(ref takeoverPending) == 1 ? PacketFlags.Takeover : PacketFlags.None, size);
         }
 
@@ -168,6 +177,13 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
                     if (!Protocol.TryRead(response.Buffer, key, out var header, out var responseBody) || header.Session != session) continue;
                     if (header.Type == PacketType.Stats && StatsMessage.TryRead(responseBody, out var stats))
                     {
+                        // Do not send PCM until the receiver confirms the requested
+                        // adaptive policy; an ordinary acceptance is not an acknowledgment.
+                        if (stats.Accepted && config.AdaptiveBuffer &&
+                            (stats.AdaptiveBuffer is not { } adaptive ||
+                             adaptive.MinimumMs != config.AdaptiveMinLatencyMs ||
+                             adaptive.MaximumMs != config.AdaptiveMaxLatencyMs))
+                            throw new ServerRejectedException(RejectReason.UnsupportedFormat, adaptiveBuffer: true);
                         int next = stats.Accepted ? 1 : 0;
                         int previous;
                         lock (connectionGate)
@@ -200,7 +216,7 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
                             _levelMeter.Reset();
                         }
                         Interlocked.CompareExchange(ref rejectionFailure,
-                            new ServerRejectedException((RejectReason)responseBody[0]), null);
+                            new ServerRejectedException((RejectReason)responseBody[0], config.AdaptiveBuffer), null);
                         runStop.Cancel();
                         StateChanged?.Invoke("Rejected");
                     }
@@ -240,7 +256,7 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
                         if (runToken.IsCancellationRequested) break;
                         if (ticks % 400 == 0)
                         {
-                            int helloSize = new HelloMessage(48000, 2, 1, 5, (ushort)config.TargetLatencyMs, Environment.MachineName).Write(body);
+                            int helloSize = WriteHello();
                             SendSync(PacketType.Hello, Volatile.Read(ref takeoverPending) == 1 ? PacketFlags.Takeover : PacketFlags.None, helloSize);
                         }
                         if (ticks % 200 == 0)
@@ -306,7 +322,10 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
             if (Volatile.Read(ref rejectionFailure) is { } rejection && !cancellationToken.IsCancellationRequested)
                 throw rejection;
             if (Volatile.Read(ref captureFailure) is { } failure && !cancellationToken.IsCancellationRequested)
+            {
+                if (failure is CaptureProcessUnavailableException) throw failure;
                 throw new CaptureDeviceException(failure);
+            }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
         finally

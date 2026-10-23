@@ -4,7 +4,7 @@ namespace NksAudioLink.Core;
 public sealed class JitterBuffer
 {
     private readonly Slot[] _slots;
-    private readonly int _targetFrames;
+    private int _targetFrames;
     private ulong _nextIndex;
     private bool _started;
     private bool _primed;
@@ -37,6 +37,16 @@ public sealed class JitterBuffer
     public long Duplicates { get; private set; }
     public long Overruns { get; private set; }
     public long Underruns { get; private set; }
+
+    public void SetTargetLatency(int targetLatencyMs, bool rebuffer = false)
+    {
+        if (targetLatencyMs < Protocol.FrameMs || targetLatencyMs > 200 || targetLatencyMs % Protocol.FrameMs != 0 ||
+            _slots.Length <= targetLatencyMs / Protocol.FrameMs + 1)
+            throw new ArgumentOutOfRangeException(nameof(targetLatencyMs));
+        _targetFrames = targetLatencyMs / Protocol.FrameMs;
+        if (rebuffer) { _primed = false; _waitingForFill = _started; }
+        TryPrime();
+    }
 
     public void Reset()
     {

@@ -3,7 +3,7 @@ namespace NksAudioLink.Core;
 /// <summary>PI feedback that adjusts source samples consumed per output sample.</summary>
 public sealed class DriftController
 {
-    private readonly double _targetMs;
+    private double _targetMs;
     private double _filteredMs;
     private double _integralPpm;
     private bool _initialized;
@@ -16,6 +16,14 @@ public sealed class DriftController
 
     public double Ratio { get; private set; } = 1;
     public int RatioPpm => (int)Math.Round((Ratio - 1) * 1_000_000);
+
+    public void SetTarget(double targetMs)
+    {
+        if (!double.IsFinite(targetMs) || targetMs is < 5 or > 200) throw new ArgumentOutOfRangeException(nameof(targetMs));
+        _targetMs = targetMs;
+        _integralPpm = 0;
+        // Preserve phase, filter and current ratio. Update retains the existing slew limit.
+    }
 
     public double Update(double bufferedMs)
     {

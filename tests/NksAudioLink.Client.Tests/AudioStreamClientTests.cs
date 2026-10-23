@@ -414,6 +414,28 @@ public sealed class AudioStreamClientTests
         Assert.All(sources, source => Assert.True(source.Disposed));
     }
 
+    [Fact]
+    public async Task SelectedApplicationExitIsTerminalAndNeverRecreatesCapture()
+    {
+        using var server = new PacketServer();
+        var source = new FakeSource();
+        int created = 0;
+        var client = new AudioStreamClient(Config(server.Port), (_, _) =>
+        {
+            Interlocked.Increment(ref created);
+            return source;
+        });
+        using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        Task running = client.RunAsync(null, true, stop.Token);
+        await Eventually(() => server.Audio.Count >= 3, TimeSpan.FromSeconds(3));
+        source.CaptureErrorSnapshot()!.Invoke(new CaptureProcessUnavailableException("Selected process exited."));
+        var error = await Assert.ThrowsAsync<CaptureProcessUnavailableException>(
+            () => running.WaitAsync(TimeSpan.FromSeconds(3)));
+        Assert.Equal("Selected process exited.", error.Message);
+        Assert.True(source.Disposed);
+        Assert.Equal(1, Volatile.Read(ref created));
+    }
+
     [Theory]
     [InlineData(RejectReason.Busy)]
     [InlineData(RejectReason.UnsupportedFormat)]

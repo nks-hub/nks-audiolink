@@ -88,7 +88,8 @@ public static class Protocol
     }
 }
 
-public readonly record struct HelloMessage(uint SampleRate, byte Channels, byte Format, byte FrameMs, ushort TargetLatencyMs, string Name)
+public readonly record struct HelloMessage(uint SampleRate, byte Channels, byte Format, byte FrameMs, ushort TargetLatencyMs, string Name,
+    AdaptiveBufferOptions? AdaptiveBuffer = null)
 {
     public int Write(Span<byte> destination)
     {
@@ -97,9 +98,16 @@ public readonly record struct HelloMessage(uint SampleRate, byte Channels, byte 
             throw new ArgumentException("Name or output buffer is invalid.", nameof(destination));
         BinaryPrimitives.WriteUInt32LittleEndian(destination, SampleRate);
         destination[4] = Channels;
-        destination[5] = Format;
+        ushort target = TargetLatencyMs;
+        if (AdaptiveBuffer is { } adaptive)
+        {
+            if (Format != 1 || !adaptive.IsValid || TargetLatencyMs < adaptive.MinimumMs || TargetLatencyMs > adaptive.MaximumMs || TargetLatencyMs % Protocol.FrameMs != 0)
+                throw new ArgumentException("Invalid adaptive buffer bounds or initial target.", nameof(AdaptiveBuffer));
+            target = (ushort)((TargetLatencyMs / 5) | ((adaptive.MinimumMs / 5) << 6) | ((adaptive.MaximumMs / 5) << 11));
+        }
+        destination[5] = AdaptiveBuffer is null ? Format : (byte)0x81;
         destination[6] = FrameMs;
-        BinaryPrimitives.WriteUInt16LittleEndian(destination[7..], TargetLatencyMs);
+        BinaryPrimitives.WriteUInt16LittleEndian(destination[7..], target);
         destination[9] = (byte)nameBytes;
         System.Text.Encoding.UTF8.GetBytes(Name, destination[10..]);
         return 10 + nameBytes;
@@ -112,14 +120,19 @@ public readonly record struct HelloMessage(uint SampleRate, byte Channels, byte 
         try
         {
             var name = new System.Text.UTF8Encoding(false, true).GetString(body[10..]);
-            message = new HelloMessage(BinaryPrimitives.ReadUInt32LittleEndian(body), body[4], body[5], body[6], BinaryPrimitives.ReadUInt16LittleEndian(body[7..]), name);
+            ushort wireTarget = BinaryPrimitives.ReadUInt16LittleEndian(body[7..]);
+            bool adaptive = body[5] == 0x81;
+            message = new HelloMessage(BinaryPrimitives.ReadUInt32LittleEndian(body), body[4], adaptive ? (byte)1 : body[5], body[6],
+                adaptive ? (ushort)((wireTarget & 63) * 5) : wireTarget, name,
+                adaptive ? new AdaptiveBufferOptions(((wireTarget >> 6) & 31) * 5, ((wireTarget >> 11) & 31) * 5) : null);
             return true;
         }
         catch (System.Text.DecoderFallbackException) { return false; }
     }
 
     public bool IsSupported => SampleRate == Protocol.SampleRate && Channels == Protocol.Channels && Format == 1 &&
-        FrameMs == Protocol.FrameMs && TargetLatencyMs is >= 10 and <= 200 && TargetLatencyMs % Protocol.FrameMs == 0;
+        FrameMs == Protocol.FrameMs && TargetLatencyMs is >= 10 and <= 200 && TargetLatencyMs % Protocol.FrameMs == 0 &&
+        (AdaptiveBuffer is null || AdaptiveBuffer is { IsValid: true } bounds && TargetLatencyMs >= bounds.MinimumMs && TargetLatencyMs <= bounds.MaximumMs);
 }
 
 public static class AudioMessage

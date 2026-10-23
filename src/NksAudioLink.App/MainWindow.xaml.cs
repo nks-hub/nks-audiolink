@@ -26,6 +26,9 @@ public partial class MainWindow : Window
         public string? DeviceId { get; init; }
         public bool Loopback { get; init; } = true;
         public bool VirtualCableMode { get; init; }
+        public bool ApplicationMode { get; init; }
+        public string? ProcessNamePreference { get; init; }
+        public bool AdaptiveBuffer { get; init; }
         public int GainPercent { get; init; } = 100;
         public int TargetLatencyMs { get; init; } = 30;
     }
@@ -47,6 +50,7 @@ public partial class MainWindow : Window
     private bool _initializing = true;
     private bool _updatingBufferPreset;
     private string? _preferredDeviceId;
+    private string? _preferredProcessName;
     private DateTime _lastStatsUtc;
     private DateTime _connectionStartedUtc;
     private StatsMessage? _latestStats;
@@ -100,9 +104,12 @@ public partial class MainWindow : Window
             HttpPortBox.Text = (saved.HttpPort is >= 1 and <= 65535 ? saved.HttpPort : 7356).ToString();
             GainSlider.Value = Math.Clamp(saved.GainPercent, 0, 200);
             LatencySlider.Value = Math.Clamp(saved.TargetLatencyMs, 10, 200);
-            VirtualRadio.IsChecked = saved.VirtualCableMode;
-            CaptureRadio.IsChecked = !saved.Loopback && !saved.VirtualCableMode;
-            LoopbackRadio.IsChecked = saved.Loopback && !saved.VirtualCableMode;
+            AdaptiveBufferCheck.IsChecked = saved.AdaptiveBuffer;
+            _preferredProcessName = saved.ProcessNamePreference;
+            ProcessRadio.IsChecked = saved.ApplicationMode;
+            VirtualRadio.IsChecked = saved.VirtualCableMode && !saved.ApplicationMode;
+            CaptureRadio.IsChecked = !saved.Loopback && !saved.VirtualCableMode && !saved.ApplicationMode;
+            LoopbackRadio.IsChecked = saved.Loopback && !saved.VirtualCableMode && !saved.ApplicationMode;
             _preferredDeviceId = saved.DeviceId;
         }
         catch (Exception ex) { DetailText.Text = "Could not load saved settings. Check settings.json. " + ex.Message; }
@@ -120,6 +127,9 @@ public partial class MainWindow : Window
                 DeviceId = DeviceCombo.SelectedValue as string,
                 Loopback = LoopbackRadio.IsChecked == true,
                 VirtualCableMode = VirtualRadio.IsChecked == true,
+                ApplicationMode = ProcessRadio.IsChecked == true,
+                ProcessNamePreference = (ProcessCombo.SelectedItem as CaptureProcess)?.ProcessName ?? _preferredProcessName,
+                AdaptiveBuffer = AdaptiveBufferCheck.IsChecked == true,
                 GainPercent = (int)GainSlider.Value,
                 TargetLatencyMs = (int)LatencySlider.Value
             };
@@ -133,6 +143,23 @@ public partial class MainWindow : Window
     {
         try
         {
+            bool applicationMode = ProcessRadio.IsChecked == true;
+            DeviceCombo.Visibility = applicationMode ? Visibility.Collapsed : Visibility.Visible;
+            ProcessCombo.Visibility = applicationMode ? Visibility.Visible : Visibility.Collapsed;
+            if (applicationMode)
+            {
+                var selectedProcess = ProcessCombo.SelectedItem as CaptureProcess;
+                var processes = CaptureProcess.List();
+                ProcessCombo.ItemsSource = processes;
+                ProcessCombo.SelectedItem = processes.FirstOrDefault(p => p == selectedProcess);
+                CableInfoButton.Visibility = Visibility.Collapsed;
+                DeviceHint.Text = !CaptureProcess.PlatformMaySupportCapture ? CaptureProcess.UnsupportedMessage
+                    : selectedProcess is not null && ProcessCombo.SelectedItem is null ? "The selected application exited. Select its current process."
+                    : _preferredProcessName is { Length: > 0 } && ProcessCombo.SelectedItem is null
+                        ? $"Previously used: {_preferredProcessName}. Select the current process explicitly."
+                        : "Select the application's main process; its child processes are included. Refresh after opening it.";
+                return;
+            }
             string? selected = _preferredDeviceId ?? DeviceCombo.SelectedValue as string;
             bool loopback = LoopbackRadio.IsChecked == true;
             bool virtualMode = VirtualRadio.IsChecked == true;
@@ -159,8 +186,10 @@ public partial class MainWindow : Window
 
     private void Mode_Checked(object sender, RoutedEventArgs e)
     {
-        if (DeviceCombo is null || ModeDescription is null) return;
-        ModeDescription.Text = LoopbackRadio.IsChecked == true
+        if (DeviceCombo is null || ProcessCombo is null || ModeDescription is null) return;
+        ModeDescription.Text = ProcessRadio.IsChecked == true
+            ? "Sends only this application and its children. Other apps and Windows output routing stay unchanged."
+            : LoopbackRadio.IsChecked == true
             ? "Sends audio from the selected output. It still plays on this PC."
             : VirtualRadio.IsChecked == true
                 ? "Routes Windows audio to CABLE Input and captures it from CABLE Output."
@@ -224,11 +253,18 @@ public partial class MainWindow : Window
             SetStatus("Virtual mode unavailable", "Enable CABLE Input and CABLE Output in Windows sound settings.");
             return;
         }
-        if (DeviceCombo.SelectedItem is not AudioDevice device)
+        var targetProcess = ProcessRadio.IsChecked == true ? ProcessCombo.SelectedItem as CaptureProcess : null;
+        if (ProcessRadio.IsChecked == true && (!CaptureProcess.PlatformMaySupportCapture || targetProcess is null))
+        {
+            SetStatus("Application capture unavailable", !CaptureProcess.PlatformMaySupportCapture ? CaptureProcess.UnsupportedMessage : "Select the application's current process. Refresh the list if it was restarted.");
+            return;
+        }
+        if (ProcessRadio.IsChecked != true && DeviceCombo.SelectedItem is not AudioDevice)
         {
             SetStatus("No audio source", "Select an available audio device.");
             return;
         }
+        AudioDevice device = DeviceCombo.SelectedItem is AudioDevice selectedDevice ? selectedDevice : default;
         if (!int.TryParse(PortBox.Text, out int port))
         {
             SetStatus("Invalid settings", "Enter a UDP port from 1 to 65535.");
@@ -238,6 +274,7 @@ public partial class MainWindow : Window
         {
             Server = ServerBox.Text.Trim(), Port = port, Gain = GainSlider.Value / 100,
             TargetLatencyMs = (int)LatencySlider.Value,
+            AdaptiveBuffer = AdaptiveBufferCheck.IsChecked == true,
             PskBase64 = string.IsNullOrWhiteSpace(PskBox.Password) ? null : PskBox.Password.Trim()
         };
         try { config.Validate(); }
@@ -261,10 +298,10 @@ public partial class MainWindow : Window
         ConnectButton.Content = "Disconnect";
         ConnectButton.Background = new SolidColorBrush(Color.FromRgb(45, 62, 79));
         if (_trayConnect is not null) _trayConnect.Text = "Disconnect";
-        SetStatus("Connecting", $"Server {config.Server}:{config.Port} · {device.Name}");
-        var client = new AudioStreamClient(config);
+        SetStatus("Connecting", $"Server {config.Server}:{config.Port} · {targetProcess?.Name ?? device.Name}");
+        var client = targetProcess is not null ? new AudioStreamClient(config, targetProcess) : new AudioStreamClient(config);
         _activeClient = client;
-        ServerCard.IsEnabled = SourceCard.IsEnabled = LatencySlider.IsEnabled = BufferPresetCombo.IsEnabled = false;
+        ServerCard.IsEnabled = SourceCard.IsEnabled = LatencySlider.IsEnabled = BufferPresetCombo.IsEnabled = AdaptiveBufferCheck.IsEnabled = false;
         client.StatsReceived += (stats, rtt) => Dispatcher.BeginInvoke(() =>
         {
             if (ReferenceEquals(_activeClient, client) && _streamStop is { IsCancellationRequested: false })
@@ -303,7 +340,7 @@ public partial class MainWindow : Window
             _streamTask = null;
             _activeClient = null;
             ResetStats();
-            ServerCard.IsEnabled = SourceCard.IsEnabled = LatencySlider.IsEnabled = BufferPresetCombo.IsEnabled = true;
+            ServerCard.IsEnabled = SourceCard.IsEnabled = LatencySlider.IsEnabled = BufferPresetCombo.IsEnabled = AdaptiveBufferCheck.IsEnabled = true;
             ConnectButton.IsEnabled = !_quitInProgress;
             ConnectButton.Content = "Connect";
             ConnectButton.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(21, 127, 117));
@@ -323,6 +360,9 @@ public partial class MainWindow : Window
         _latestStats = stats;
         _latestRttMs = rtt;
         BufferText.Text = $"{stats.BufferMs} ms";
+        BufferTargetText.Text = stats.AdaptiveBuffer is { } adaptive
+            ? $"Adaptive target: {adaptive.TargetMs} ms · {adaptive.Reason switch { AdaptiveBufferReason.PacketLoss => "packet loss", AdaptiveBufferReason.LatePacket => "late packet", AdaptiveBufferReason.MaximumReached => "maximum", _ => adaptive.Reason.ToString().ToLowerInvariant() }}"
+            : $"Manual target: {(int)LatencySlider.Value} ms";
         SinkDelayText.Text = $"{stats.SinkDelayMs} ms";
         RttText.Text = $"{rtt:0.0} ms";
         // Capture period is an estimate; WASAPI does not report actual capture-to-wire delay here.
@@ -364,6 +404,7 @@ public partial class MainWindow : Window
     {
         _latestStats = null;
         _latestRttMs = _latestEstimatedDelayMs = null;
+        BufferTargetText.Text = "Target: —";
         foreach (var field in new[] { BufferText, SinkDelayText, RttText, EndToEndText, LostText, LateText, UnderrunText, OverrunText })
             field.Text = "\u2014";
     }
@@ -413,14 +454,15 @@ public partial class MainWindow : Window
             AudioDevice? device = DeviceCombo.SelectedItem is AudioDevice selected ? selected : null;
             var snapshot = new ClientDiagnosticSnapshot(
                 StatusText.Text,
-                VirtualRadio.IsChecked == true ? CaptureMode.VirtualCable : LoopbackRadio.IsChecked == true ? CaptureMode.Loopback : CaptureMode.Input,
+                ProcessRadio.IsChecked == true ? CaptureMode.Application : VirtualRadio.IsChecked == true ? CaptureMode.VirtualCable : LoopbackRadio.IsChecked == true ? CaptureMode.Loopback : CaptureMode.Input,
                 (int)LatencySlider.Value, GainSlider.Value,
                 int.TryParse(PortBox.Text, out int udpPort) ? udpPort : 0,
                 int.TryParse(HttpPortBox.Text, out int httpPort) ? httpPort : 0,
                 _latestStats, _latestRttMs, _latestEstimatedDelayMs,
-                StatusText.Text == "Connected" ? _activeClient?.Levels : null);
+                StatusText.Text == "Connected" ? _activeClient?.Levels : null,
+                AdaptiveBufferCheck.IsChecked == true);
             string report = ClientDiagnostics.Format(snapshot, _activity,
-                [ServerBox.Text.Trim(), device?.Id, device?.Name,
+                [ServerBox.Text.Trim(), device?.Id, device?.Name, (ProcessCombo.SelectedItem as CaptureProcess)?.Name, (ProcessCombo.SelectedItem as CaptureProcess)?.ProcessName, _preferredProcessName,
                  Environment.UserName, Environment.MachineName, Environment.UserDomainName,
                  Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)], PskBox.Password.Trim());
             System.Windows.Clipboard.SetText(report);

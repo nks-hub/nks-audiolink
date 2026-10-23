@@ -6,6 +6,20 @@ namespace NksAudioLink.Client.Tests;
 public sealed class ClientDiagnosticsTests
 {
     [Fact]
+    public void AdaptiveReportDistinguishesRequestedRangeActualTargetAndMeasuredOccupancy()
+    {
+        var state = new ClientDiagnosticSnapshot("Connected", CaptureMode.Application, 40, 100, 7355, 7356,
+            new StatsMessage(true, 55, 20, 0, 0, 0, 0, 0, 0,
+                new AdaptiveBufferStatus(60, 20, 100, AdaptiveBufferReason.Underrun, 2)),
+            1, 90, null, true);
+        string report = ClientDiagnostics.Format(state, [], [], null);
+        Assert.Contains("Capture mode: Application", report);
+        Assert.Contains("requested range: 20–100 ms", report);
+        Assert.Contains("Active adaptive target: 60 ms; reason: Underrun; changes: 2", report);
+        Assert.Contains("server buffer: 55 ms", report);
+    }
+
+    [Fact]
     public void ReportIncludesVersionAndUsefulMeasurementsButRedactsSecretsAndIdentities()
     {
         const string key = "cHJpdmF0ZS1zaGFyZWQta2V5LXRlc3Q=";

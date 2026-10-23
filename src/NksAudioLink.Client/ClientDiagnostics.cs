@@ -6,11 +6,12 @@ using NksAudioLink.Core;
 
 namespace NksAudioLink.Client;
 
-public enum CaptureMode { Loopback, VirtualCable, Input }
+public enum CaptureMode { Loopback, VirtualCable, Input, Application }
 
 public sealed record ClientDiagnosticSnapshot(
     string Status, CaptureMode Mode, int TargetBufferMs, double GainPercent, int UdpPort, int HttpPort,
-    StatsMessage? Stats, double? RttMs, double? EstimatedDelayMs, AudioLevelSnapshot? Levels);
+    StatsMessage? Stats, double? RttMs, double? EstimatedDelayMs, AudioLevelSnapshot? Levels,
+    bool AdaptiveBuffer = false, int AdaptiveMinimumMs = 20, int AdaptiveMaximumMs = 100);
 
 /// <summary>Formats an allowlisted support report; it does not access the clipboard or network.</summary>
 public static class ClientDiagnostics
@@ -50,10 +51,15 @@ public static class ClientDiagnostics
         report.AppendLine($"Status: {Safe(state.Status)}");
         report.AppendLine($"Capture mode: {state.Mode}");
         report.AppendLine($"Target buffer: {state.TargetBufferMs} ms; gain: {Number(state.GainPercent)}%");
+        report.AppendLine(state.AdaptiveBuffer
+            ? $"Buffer mode: adaptive; requested range: {state.AdaptiveMinimumMs}–{state.AdaptiveMaximumMs} ms"
+            : "Buffer mode: manual");
         report.AppendLine($"Audio UDP port: {state.UdpPort}; monitor HTTP port: {state.HttpPort}");
         report.AppendLine("Server, audio-device and user identifiers: redacted");
         if (state.Stats is { } stats)
         {
+            if (stats.AdaptiveBuffer is { } adaptive)
+                report.AppendLine($"Active adaptive target: {adaptive.TargetMs} ms; reason: {adaptive.Reason}; changes: {adaptive.Changes}");
             report.AppendLine($"Estimated delay: {Number(state.EstimatedDelayMs)} ms (excludes receiver/speakers)");
             report.AppendLine($"Network RTT: {Number(state.RttMs)} ms; server buffer: {stats.BufferMs} ms; output queue: {stats.SinkDelayMs} ms; drift: {stats.RatioPpm} ppm");
             report.AppendLine($"Jitter counters: lost={stats.Lost}; late={stats.Late}; underruns={stats.Underruns}; overruns={stats.Overruns}");

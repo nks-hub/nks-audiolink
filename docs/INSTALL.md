@@ -65,6 +65,16 @@ The **Native ALSA output** panel reports write errors, successful recoveries, fa
 
 HTTP access uses the same `allowCidrs` as audio. The UDP shared key is neither returned nor used as an HTTP password. There are no web controls that change the server. Keep HTTP within the intended LAN or an SSH tunnel; it does not provide TLS or user login. The self-contained server includes the required ASP.NET Core runtime. A framework-dependent server needs both .NET and ASP.NET Core 9 runtimes.
 
+### Optional adaptive jitter buffer
+
+Manual buffering remains the default; installing the new server does not change existing clients or their saved target. A compatible client can opt in with `adaptiveBuffer: true`, `adaptiveMinLatencyMs` and `adaptiveMaxLatencyMs` (default bounds 20 and 100 ms). Bounds must be ordered multiples of 5 ms within 20–100 ms. The initial adaptive target clamps the saved manual target into those bounds; the saved manual value itself is preserved. No server configuration switch is required.
+
+The target rises by up to 10 ms after a new jitter underrun, packet loss or late packet, at most once per two seconds of output frames. After 30 seconds of consecutive clean full output frames it falls by 5 ms. Missing input cannot trigger a decrease. Changes use the existing smoothly limited resampling correction; an actual underrun refills to the updated target. There is no reconnect, source-timeline reset or deliberate frame discard just to reduce latency. Native ALSA recovery counters do not drive this policy.
+
+The dashboard shows manual/adaptive mode, the actual target, negotiated limits, last adaptation reason and change count. Its buffer graph overlays the target as a dashed line. `/api/stats` and server history add `session.targetLatencyMs` and nullable `session.adaptiveBuffer` (`targetMs`, `minimumMs`, `maximumMs`, `reason`, `changes`). The client receives the same adaptive status through UDP, independently of HTTP. Older servers explicitly reject the adaptive capability variant; use manual mode with them. See the [wire contract](PROTOCOL.md#hello-body).
+
+Adaptive target is only the network buffer budget, not total audio latency. A larger ceiling trades latency for dropout tolerance; it cannot guarantee dropout-free playback or an end-to-end delay below 100 ms. The policy has deterministic stream and negotiation tests; physical-network acceptance must identify whether manual or adaptive mode was actually running.
+
 ### Service control
 
 ```sh

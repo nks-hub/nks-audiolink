@@ -2,7 +2,7 @@
 
 A phase is checked only after its implementation and required verification are complete.
 
-The 2026-10-23 review adds SDK 9.0.203 compatibility, packet-loss and lifecycle fixes, a borderless desktop UI, signal meters, manual buffer presets, redacted diagnostic copy, and an optional HTTP dashboard with one-hour server history. Local automated coverage now includes 106 portable tests, 32 Windows client/CLI tests, 14 dashboard tests and 36 package/version tests. Core line coverage was remeasured at 90.57% (81.38% branches). See [candidate review evidence](docs/VALIDATION.md#release-candidate-verification-2026-10-23). Historical phase counts below describe the earlier deployment; the current acceptance checklist records the new verification separately.
+The 2026-10-23 review adds SDK 9.0.203 compatibility, packet-loss and lifecycle fixes, a borderless desktop UI, signal meters, manual and adaptive buffering, one-application capture, redacted diagnostic copy, and an optional HTTP dashboard with one-hour server history. Local automated coverage now includes 134 portable tests, 48 Windows client/CLI tests, 15 dashboard tests and 36 package/version tests. Core line coverage was remeasured at 96.22% (85.82% branches). See [candidate review evidence](docs/VALIDATION.md#release-candidate-verification-2026-10-23). Historical phase counts below describe the earlier deployment; the current acceptance checklist records the new verification separately.
 
 - [x] 0. Solution scaffold, local build and tests, public GitHub repository, and passing Windows/Linux CI. Verified on 2026-10-02.
 - [x] 1. Core protocol, HMAC, jitter buffer, resampling and clock drift tests. The portable Core/server/queue suite has 39 passing tests; Core line coverage is 86.93%. Drift simulation covers ±200 ppm over ten minutes of virtual time.
@@ -22,6 +22,8 @@ The 2026-10-23 review adds SDK 9.0.203 compatibility, packet-loss and lifecycle 
 - [x] Show native ALSA output errors/recoveries separately from network/jitter counters in the HTTP API and dashboard, retaining closed-session errors in lifetime totals.
 - [x] Add a client diagnostic-copy action with version, safe settings, current measurements and recent events; exclude shared keys and redact identifying addresses/device labels.
 - [x] Add manual 20/40/80 ms buffer presets with a custom value, preserving the 30 ms initial default and saved settings; verify compiled handlers and minimum-window layout.
+- [x] Add opt-in adaptive buffering with bounded increases, slow stable decreases, visible targets/reasons, compatible negotiation and tests of actual authenticated client/server traffic through deliberate packet loss.
+- [x] Add one-application process-tree capture with explicit process selection, native capability checks and safe exit/PID-reuse handling; verify actual two-process audio isolation on Windows 10.
 - [x] Expand the primary-source competitor comparison into [COMPETITION.md](docs/COMPETITION.md), connecting findings to implemented work, acceptance checks and separately scoped future features.
 - [x] Merge the newer upstream README and MIT licensing changes; update About and the package workflow to include the MIT notice.
 - [x] Rerun portable and Windows client tests, including sender recovery after a scheduler discontinuity; remeasure Core coverage above 80%.

@@ -60,12 +60,13 @@ public sealed class AudioServer
             if (_session is { } active)
             {
                 var stats = active.Engine.GetStats();
+                var adaptive = active.Engine.GetAdaptiveStatus();
                 session = new SessionStatus(active.Id,
                     (long)Stopwatch.GetElapsedTime(active.StartedTick).TotalSeconds,
                     Math.Round(Stopwatch.GetElapsedTime(active.LastPacketTick).TotalMilliseconds, 1),
                     stats.BufferMs, Volatile.Read(ref active.SinkDelayMs), stats.RatioPpm,
                     stats.Lost, stats.Late, stats.Underruns, stats.Overruns, stats.Duplicates,
-                    active.Levels.GetSnapshot(), active.NativeStatus);
+                    active.Levels.GetSnapshot(), active.NativeStatus, adaptive?.TargetMs ?? active.Engine.TargetLatencyMs, adaptive);
             }
             return new ServerStatus(config.Name,
                 ProductVersion.Display,
@@ -156,7 +157,7 @@ public sealed class AudioServer
                             CloseSession(releaseNow: true);
                             ReleaseIdleSink();
                             var sink = _sinkFactory(config.Sink);
-                            _session = new Session(remote, header.Session, new PlayoutEngine(hello.TargetLatencyMs), sink);
+                            _session = new Session(remote, header.Session, new PlayoutEngine(hello.TargetLatencyMs, hello.AdaptiveBuffer), sink);
                             Console.WriteLine($"Session {header.Session} from {remote}");
                         }
                         catch (Exception ex)
@@ -281,14 +282,16 @@ public sealed class AudioServer
     {
         IPEndPoint endpoint;
         PacketHeader header;
-        byte[] body = new byte[StatsMessage.Size];
+        byte[] body;
         lock (_gate)
         {
             if (_session is null) return;
             var stats = _session.Engine.GetStats();
+            var adaptive = _session.Engine.GetAdaptiveStatus();
+            body = new byte[adaptive is null ? StatsMessage.Size : StatsMessage.AdaptiveSize];
             new StatsMessage(true, (ushort)stats.BufferMs, (ushort)Volatile.Read(ref _session.SinkDelayMs),
                 (uint)stats.Underruns, (uint)stats.Overruns, (uint)stats.Lost, (uint)stats.Late,
-                stats.RatioPpm, _session.EchoTicks).Write(body);
+                stats.RatioPpm, _session.EchoTicks, adaptive).Write(body);
             endpoint = _session.Endpoint;
             header = new PacketHeader(PacketType.Stats, PacketFlags.None, _session.Id, ++_session.Sequence);
         }

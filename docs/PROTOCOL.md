@@ -43,13 +43,25 @@ With the `AUTH` flag, the packet ends in a **16-byte authentication tag**: the f
 |---:|---|
 | 4 | `sampleRate` (48000) |
 | 1 | `channels` (2) |
-| 1 | `format` (1 = s16le) |
+| 1 | `format` (1 = manual s16le; 0x81 = s16le with adaptive-buffer negotiation) |
 | 1 | `frameMs` (5) |
-| 2 | `targetLatencyMs` (for example, 30) |
+| 2 | Manual `targetLatencyMs` (for example, 30), or packed adaptive settings for format 0x81 |
 | 1 | Client name length N |
 | N | UTF-8 client name (up to 64 bytes) |
 
 The client sends `HELLO` at startup and every 2 seconds afterward to keep the session alive. The server replies with `STATS` (accepted) or `REJECT`.
+
+Manual format **1** retains its original byte layout and accepts a 10–200 ms target in 5 ms steps. Adaptive operation is opt-in. Format **0x81** still carries stereo s16le PCM; it selects an adaptive-buffer capability variant, not a different audio encoding. The body length and UTF-8 name layout are unchanged. Its two-byte target field packs three values, measured in **5 ms units**:
+
+| Bits | Value |
+|---|---|
+| 0–5 | Initial target / 5 |
+| 6–10 | Minimum target / 5 |
+| 11–15 | Maximum target / 5 |
+
+All adaptive values must be multiples of 5 ms in **20–100 ms**, with `minimum <= initial <= maximum`. Example: initial 40 ms, minimum 20 ms and maximum 100 ms encode as `8 | (4 << 6) | (20 << 11) = 0xA108`, transmitted as bytes `08 A1`. Malformed ranges are rejected before opening the output. Format 1 never interprets these bits as adaptive settings. Periodic HELLOs retain the initial request; they do not reset the evolving target of an existing session.
+
+An older server parses the unchanged HELLO layout but rejects format 0x81 with `REJECT UnsupportedFormat`. A new server continues to accept old format-1 clients and sends them the original 33-byte STATS. An adaptive client must wait for accepted extended STATS with matching bounds before sending audio; a plain 33-byte acceptance is not an adaptive acknowledgment. Rejection requires an explicit new connection action, with adaptive mode disabled or a compatible server selected.
 
 ### AUDIO body
 
@@ -78,6 +90,21 @@ No body. The server ends the session immediately and releases the device after `
 | 4 | `late` |
 | 4 | `ratioPpm`: signed clock drift correction in parts per million |
 | 8 | `echoTicks`: timestamp from the client's latest `PING` for RTT calculation; otherwise 0 |
+
+The fields above total **33 bytes** and remain unchanged for manual sessions. Adaptive sessions receive **45 bytes**, retaining that exact 33-byte prefix and appending:
+
+| Body offset | Size | Field |
+|---|---:|---|
+| 33 | 1 | Extension marker `0xA1` |
+| 34 | 1 | Adaptation reason: 0 initial, 1 jitter underrun, 2 packet loss, 3 late packet, 4 stable playback, 5 maximum reached |
+| 35 | 2 | Current target in milliseconds |
+| 37 | 2 | Negotiated minimum target in milliseconds |
+| 39 | 2 | Negotiated maximum target in milliseconds |
+| 41 | 4 | Number of target changes in this session |
+
+Extended status uses ordinary millisecond values, not packed 5 ms units. Receivers reject unknown extension markers/reasons, invalid bounds/targets and partial or oversized bodies. `bufferMs` remains measured occupancy and may differ from the current target during a transition. Native ALSA device errors are separate HTTP/journal diagnostics and never count as adaptive network-error evidence.
+
+The current policy raises the target by up to 10 ms on newly observed jitter underrun/loss/late-packet counters, no more than once per 400 output frames (2 seconds of audio). It lowers the target by 5 ms after 6,000 consecutive clean full output frames (30 seconds of audio), never outside negotiated bounds. Waiting for input does not qualify as stable playback; valid silent PCM frames do. The existing resampler changes occupancy smoothly with its bounded ratio and slew. After an actual underrun, refill uses the new target. Adaptation does not reset source indices, reconnect the session or discard frames simply to reach a smaller target.
 
 ### DISCOVER / DISCOVER_REPLY
 

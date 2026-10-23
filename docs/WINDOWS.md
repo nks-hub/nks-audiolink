@@ -8,7 +8,9 @@ dotnet run --project src/NksAudioLink.App
 
 Enter the server address or click **Find**, choose an audio source, set **Gain**, then click **Connect**. Expand **Buffer & startup** to change **Target buffer**, which controls the server jitter buffer size. Gain can be changed while streaming; disconnect before changing the other settings. Connection controls stay at the top, and the right-hand status panel shows estimated delay, server buffer occupancy, output queue delay, network round-trip time, and counts of lost and late frames, underruns, and overruns.
 
-Choose a manual buffer preset: **Low latency — 20 ms**, **Balanced — 40 ms**, or **Robust — 80 ms**. A larger buffer tolerates more network variation but adds delay. The slider still accepts custom values; **Custom** indicates a value outside those three presets. The initial default remains **30 ms**, and opening the app preserves the saved target instead of applying a preset. Both controls are disabled while streaming; there is no automatic buffer adjustment.
+Choose a manual buffer preset: **Low latency — 20 ms**, **Balanced — 40 ms**, or **Robust — 80 ms**. A larger buffer tolerates more network variation but adds delay. The slider still accepts custom values; **Custom** indicates a value outside those three presets. The initial default remains **30 ms**, and opening the app preserves the saved target instead of applying a preset. Buffer controls are disabled while streaming.
+
+**Adaptive buffer (20–100 ms)** is an optional, initially disabled mode. The server adjusts its target within those bounds in response to stream errors and sustained stable playback. The initial target is the slider value clamped to 20–100 ms; your saved manual value is preserved. The live panel shows the reported **adaptive target and reason** separately from **buffer occupancy**, which is the amount of audio currently queued. A higher target trades more delay for tolerance of network variation. An older server without adaptive support rejects this mode explicitly; turn it off to use manual buffering with that server.
 
 Closing the window leaves the application in the notification area. Its icon menu lets you connect, disconnect, reopen the window, or quit. **Start with Windows** creates a startup entry only for the current user. Settings are stored in `%AppData%\NksAudioLink\settings.json`; the shared key is not saved there.
 
@@ -23,10 +25,15 @@ The desktop underruns and overruns are server jitter-buffer counters. Native sou
 ## Audio modes
 
 - **All PC audio:** WASAPI loopback from the selected playback device. Audio remains available on the local output.
+- **One application:** process loopback captures only the selected process and its child processes, across its playback endpoints. Other applications are excluded, and Windows output routing is unchanged. Choose the main process from the list; **Refresh** reloads processes in your current Windows session. Requires process-loopback capability on an updated Windows 10 (2004 or later) or Windows 11; activation reports an explicit error when unavailable.
 - **Virtual cable:** captures CABLE Output and sets the Windows default playback device to CABLE Input while connected. Requires a separately installed VB-CABLE driver.
 - **Other input:** captures the selected recording device without changing the Windows default playback device.
 
 Some Windows applications use a fixed playback device. To route them through the virtual mode, select the system default or CABLE Input in those applications.
+
+Application capture pins the selected process ID and creation time. When that process exits, capture stops; it never silently follows a replacement process, even if Windows reuses its PID. After restarting the application, refresh and select its new process. AudioLink remembers only the process name as a hint across app restarts and requires an explicit selection again. Browser audio can belong to child processes, so select the main browser process; all its children are included rather than an individual browser tab. Protected audio or applications that delegate playback to an unrelated process may not be capturable this way. Use whole-device capture where appropriate.
+
+The process-loopback capability was exercised on Windows 10 build 19045 with real controlled processes: a selected parent's child tone was captured, an unrelated process's tone was excluded, silence was preserved after pausing, and parent exit stopped capture. See the opt-in [process capture harness](../tests/process-capture/README.md). Microsoft documents the original [activation structure](https://learn.microsoft.com/en-us/windows/win32/api/audioclientactivationparams/ns-audioclientactivationparams-audioclient_activation_params) with build 20348; supported Windows 10 updates are detected by activation rather than that original build number alone. [OBS's compatibility guide](https://obsproject.com/kb/application-audio-capture-guide) also describes Windows 10 version 2004 and later.
 
 ## If playback is quiet
 
@@ -59,9 +66,14 @@ Before changing the default playback device, AudioLink records the previous devi
 
 ```powershell
 dotnet run --project src/NksAudioLink.Cli -- devices
+dotnet run --project src/NksAudioLink.Cli -- processes
 dotnet run --project src/NksAudioLink.Cli -- discover
 dotnet run --project src/NksAudioLink.Cli -- send --server SERVER_IP --seconds 15 --gain 0.5
+dotnet run --project src/NksAudioLink.Cli -- send --server SERVER_IP --process 1234
+dotnet run --project src/NksAudioLink.Cli -- send --server SERVER_IP --adaptive-buffer true --buffer-min 20 --buffer-max 100
 dotnet run --project src/NksAudioLink.Cli -- test-tone --server SERVER_IP --seconds 10 --gain 0.01
 ```
 
 `send` supports `--mode loopback|capture`, `--device ID`, `--latency MS`, `--port`, `--config FILE`, and `--takeover true` to deliberately take over a busy server. Without `--seconds`, it runs until Ctrl+C. `--gain` accepts a value from 0 to 4 and uses a decimal point. The CLI does not change the default playback device when it captures an input; the desktop application handles automatic routing.
+
+Use `processes` to find a current PID, then `send --process PID` to capture that process tree. Do not combine `--process` with `--mode` or `--device`; it chooses its own process-loopback endpoint. `--adaptive-buffer true|false`, `--buffer-min MS` and `--buffer-max MS` override JSON configuration regardless of option order. Bounds must be multiples of 5 between 20 and 100 ms, with minimum no greater than maximum. Manual buffering remains the default.

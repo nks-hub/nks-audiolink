@@ -9,12 +9,16 @@ public sealed class PlayoutEngine
     private readonly object _gate = new();
     private readonly JitterBuffer _jitter;
     private readonly DriftController _controller;
+    private readonly AdaptiveBufferController? _adaptive;
+    private readonly int _initialTargetMs;
     private readonly DriftResampler _resampler = new();
     private readonly byte[] _frame = new byte[Protocol.PcmBytesPerFrame];
     private readonly short[] _samples = new short[Protocol.SamplesPerFrame * Protocol.Channels];
 
-    public PlayoutEngine(int targetLatencyMs = 30)
+    public PlayoutEngine(int targetLatencyMs = 30, AdaptiveBufferOptions? adaptiveBuffer = null)
     {
+        _initialTargetMs = targetLatencyMs;
+        if (adaptiveBuffer is { } options) _adaptive = new AdaptiveBufferController(targetLatencyMs, options);
         _jitter = new JitterBuffer(targetLatencyMs);
         _controller = new DriftController(targetLatencyMs);
     }
@@ -44,6 +48,13 @@ public sealed class PlayoutEngine
             }
             int written = _resampler.Read(destination, ratio);
             destination[(written * Protocol.Channels)..].Clear();
+            if (_adaptive?.Observe(_jitter.Underruns, _jitter.Lost, _jitter.Late,
+                    written == Protocol.SamplesPerFrame && _jitter.IsPrimed) == true)
+            {
+                var state = _adaptive.Status;
+                _jitter.SetTargetLatency(state.TargetMs, state.Reason == AdaptiveBufferReason.Underrun);
+                _controller.SetTarget(state.TargetMs);
+            }
         }
     }
 
@@ -54,6 +65,16 @@ public sealed class PlayoutEngine
                 _jitter.Underruns, _jitter.Overruns, _jitter.Lost, _jitter.Late, _jitter.Duplicates);
     }
 
+    public AdaptiveBufferStatus? GetAdaptiveStatus()
+    {
+        lock (_gate) return _adaptive?.Status;
+    }
+
+    public int TargetLatencyMs
+    {
+        get { lock (_gate) return _adaptive?.Status.TargetMs ?? _initialTargetMs; }
+    }
+
     public void Reset()
     {
         lock (_gate)
@@ -61,6 +82,9 @@ public sealed class PlayoutEngine
             _jitter.Reset();
             _controller.Reset();
             _resampler.Reset();
+            _adaptive?.Reset(_jitter.Underruns, _jitter.Lost, _jitter.Late);
+            _jitter.SetTargetLatency(_initialTargetMs);
+            _controller.SetTarget(_initialTargetMs);
         }
     }
 }

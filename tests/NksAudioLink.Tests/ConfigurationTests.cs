@@ -6,6 +6,35 @@ namespace NksAudioLink.Tests;
 public class ConfigurationTests
 {
     [Fact]
+    public void AdaptiveBufferPreservesManualTargetAndClampsOnlyItsInitialValue()
+    {
+        var manual = new ClientConfig { TargetLatencyMs = 155 };
+        manual.Validate();
+        Assert.False(manual.AdaptiveBuffer);
+        Assert.Equal(155, manual.EffectiveInitialLatencyMs);
+        var adaptive = manual with { AdaptiveBuffer = true };
+        adaptive.Validate();
+        Assert.Equal(155, adaptive.TargetLatencyMs);
+        Assert.Equal(100, adaptive.EffectiveInitialLatencyMs);
+        Assert.Equal(20, (adaptive with { TargetLatencyMs = 10 }).EffectiveInitialLatencyMs);
+        Assert.Equal(40, (adaptive with { TargetLatencyMs = 40 }).EffectiveInitialLatencyMs);
+    }
+
+    [Theory]
+    [InlineData(15, 100)]
+    [InlineData(20, 105)]
+    [InlineData(21, 100)]
+    [InlineData(20, 99)]
+    [InlineData(80, 40)]
+    public void AdaptiveBufferRejectsInvalidBounds(int minimum, int maximum)
+    {
+        Assert.Throws<InvalidDataException>(() => new ClientConfig
+        {
+            AdaptiveBuffer = true, AdaptiveMinLatencyMs = minimum, AdaptiveMaxLatencyMs = maximum
+        }.Validate());
+    }
+
+    [Fact]
     public void DefaultsAreValidAndLocalOnly()
     {
         var config = new ServerConfig();

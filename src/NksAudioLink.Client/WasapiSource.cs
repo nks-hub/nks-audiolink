@@ -10,7 +10,8 @@ public sealed class WasapiSource : IAudioSource
 {
     private const int StandardBufferMs = 10;
     private readonly WasapiRecorder _recorder;
-    private readonly MMDevice _device;
+    private readonly MMDevice? _device;
+    private readonly System.Diagnostics.Process? _process;
     private volatile bool _stopping;
     public AudioFrameQueue Queue { get; } = new();
     public WaveFormat Format => _recorder.WaveFormat;
@@ -50,6 +51,59 @@ public sealed class WasapiSource : IAudioSource
             _device.Dispose();
             throw new NotSupportedException($"The audio device does not provide 48 kHz, 16-bit stereo ({format}). Choose another device.");
         }
+        AttachRecorder();
+    }
+
+    private WasapiSource(WasapiRecorder recorder, System.Diagnostics.Process process)
+    {
+        _recorder = recorder;
+        _process = process;
+        AttachRecorder();
+        _process.Exited += ProcessExited;
+        _process.EnableRaisingEvents = true;
+    }
+
+    public static async Task<IAudioSource> CreateProcessAsync(CaptureProcess target, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!CaptureProcess.PlatformMaySupportCapture) throw new PlatformNotSupportedException(CaptureProcess.UnsupportedMessage);
+        var process = target.OpenVerified();
+        WasapiRecorder? recorder = null;
+        try
+        {
+            // NAudio wraps ActivateAudioInterfaceAsync with INCLUDE_TARGET_PROCESS_TREE.
+            // Run activation away from the WPF synchronization context. Updated Windows 10
+            // builds below the original SDK's 20348 requirement can support this API too;
+            // the activation result is the capability check, not the marketing OS version.
+            var pending = Task.Run(() => new WasapiRecorderBuilder()
+                .WithProcessLoopback((uint)target.Id, ProcessLoopbackMode.IncludeTargetProcessTree)
+                .WithFormat(new WaveFormat(Protocol.SampleRate, 16, Protocol.Channels))
+                .WithBufferLength(StandardBufferMs).BuildAsync());
+            try { recorder = await pending.WaitAsync(TimeSpan.FromSeconds(10), cancellationToken).ConfigureAwait(false); }
+            catch
+            {
+                _ = pending.ContinueWith(task =>
+                {
+                    if (task.IsCompletedSuccessfully) task.Result.Dispose();
+                    else _ = task.Exception;
+                }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+                throw;
+            }
+            if (process.HasExited) throw new CaptureProcessUnavailableException("The selected application exited during capture initialization. Select it again.");
+            return new WasapiSource(recorder, process);
+        }
+        catch (Exception error)
+        {
+            recorder?.Dispose();
+            process.Dispose();
+            if (error is System.Runtime.InteropServices.COMException)
+                throw new NotSupportedException($"{CaptureProcess.UnsupportedMessage} Windows activation failed (0x{error.HResult:X8}).", error);
+            throw;
+        }
+    }
+
+    private void AttachRecorder()
+    {
         _recorder.DataAvailable += (buffer, _, _, _) => Queue.Write(buffer);
         _recorder.RecordingStopped += (_, stopped) =>
         {
@@ -59,8 +113,16 @@ public sealed class WasapiSource : IAudioSource
         };
     }
 
+    private void ProcessExited(object? sender, EventArgs e)
+    {
+        if (_stopping) return;
+        Queue.Clear();
+        CaptureError?.Invoke(new CaptureProcessUnavailableException("The selected application exited. Refresh and select its new process before reconnecting."));
+    }
+
     public void Start()
     {
+        if (_process?.HasExited == true) throw new CaptureProcessUnavailableException("The selected application exited. Refresh and select it again.");
         _stopping = false;
         _recorder.StartRecording();
         // NAudio 3.1's capture thread changes Starting to Capturing after its
@@ -78,7 +140,11 @@ public sealed class WasapiSource : IAudioSource
     {
         _stopping = true;
         try { _recorder.Dispose(); }
-        finally { _device.Dispose(); }
+        finally
+        {
+            if (_process is not null) { _process.Exited -= ProcessExited; _process.Dispose(); }
+            _device?.Dispose();
+        }
     }
 
     public static IReadOnlyList<AudioDevice> ListDevices()

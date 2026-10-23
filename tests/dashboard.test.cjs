@@ -190,3 +190,16 @@ test('native failure remains in history when it closes the audio session between
   assert.equal(path(page, 'jitter-line'), '');
   assert.equal(page.elements.get('native-failures').textContent, '1');
 });
+
+test('adaptive target, bounds and reason are visible and target history is distinct from occupancy', async () => {
+  const page = dashboard(), a = sample(1), b = sample(2);
+  a.session.targetLatencyMs = 40; b.session.targetLatencyMs = 50;
+  b.session.adaptiveBuffer = { targetMs: 50, minimumMs: 20, maximumMs: 100, reason: 'LatePacket', changes: 1 };
+  await page.cycle({ ...idle, session: b.session }, history([a,b]));
+  assert.match(page.elements.get('buffer-policy').textContent, /Adaptive target 50 ms.*20.*100.*Late packet.*1 changes/);
+  assert.notEqual(path(page, 'target-line'), path(page, 'line'));
+  page.poll(); await page.cycle({ ...idle, session: { ...session(2), targetLatencyMs: 30 } }, history([],{ nextSequence: 2, serverTimeMs: 2000 }));
+  assert.equal(page.elements.get('buffer-policy').textContent, 'Manual target 30 ms');
+  page.poll(); await page.cycle(idle, history([],{ nextSequence: 2, serverTimeMs: 2000 }));
+  assert.equal(page.elements.get('buffer-policy').textContent, 'No active buffer policy.');
+});
