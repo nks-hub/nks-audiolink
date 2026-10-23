@@ -35,6 +35,8 @@ public sealed class AudioServer
         public long LastAudioTick { get; set; }
         public double MaxAudioGapMs { get; set; }
         public double MaxSinkWriteMs { get; set; }
+        public double MaxPlayoutLatenessMs { get; set; }
+        public long SkippedPlayoutFrames { get; set; }
         public int SinkDelayMs;
     }
 
@@ -202,17 +204,17 @@ public sealed class AudioServer
     private void PlayoutLoop(CancellationToken ct)
     {
         long periodTicks = Stopwatch.Frequency * Protocol.FrameMs / 1000;
-        long deadline = Stopwatch.GetTimestamp() + periodTicks;
+        var schedule = new PlayoutSchedule(Stopwatch.GetTimestamp(), periodTicks);
         short[] samples = new short[Protocol.SamplesPerFrame * Protocol.Channels];
         int ticks = 0;
         while (!ct.IsCancellationRequested)
         {
-            long remaining = deadline - Stopwatch.GetTimestamp();
+            long remaining = schedule.Deadline - Stopwatch.GetTimestamp();
             while (remaining > 0 && !ct.IsCancellationRequested)
             {
                 int sleepMs = Math.Max(1, (int)Math.Ceiling(remaining * 1000.0 / Stopwatch.Frequency));
                 Thread.Sleep(sleepMs);
-                remaining = deadline - Stopwatch.GetTimestamp();
+                remaining = schedule.Deadline - Stopwatch.GetTimestamp();
             }
             if (ct.IsCancellationRequested) break;
             Session? active;
@@ -225,6 +227,9 @@ public sealed class AudioServer
                     ReleaseIdleSink();
                 active = _session;
             }
+            long wakeTick = Stopwatch.GetTimestamp();
+            double latenessMs = Math.Max(0, wakeTick - schedule.Deadline) * 1000.0 / Stopwatch.Frequency;
+            long discarded = schedule.LimitCatchUp(wakeTick);
             if (active is not null)
             {
                 try
@@ -233,6 +238,8 @@ public sealed class AudioServer
                     {
                         if (!active.Closed)
                         {
+                            active.MaxPlayoutLatenessMs = Math.Max(active.MaxPlayoutLatenessMs, latenessMs);
+                            active.SkippedPlayoutFrames += discarded;
                             active.Engine.Read(samples);
                             active.Levels.Process(samples);
                             long beforeWrite = Stopwatch.GetTimestamp();
@@ -251,10 +258,10 @@ public sealed class AudioServer
                 }
             }
             ticks++;
-            deadline += periodTicks;
-            long afterFrame = Stopwatch.GetTimestamp();
-            if (deadline <= afterFrame)
-                deadline += ((afterFrame - deadline) / periodTicks + 1) * periodTicks;
+            // Keep short overdue deadlines: each still represents 240 output
+            // samples. Skipping them permanently drains the hardware queue.
+            // LimitCatchUp bounds long-pause debt before the next write.
+            schedule.Advance();
         }
     }
 
@@ -317,7 +324,7 @@ public sealed class AudioServer
                 }
             }
         }
-        Console.WriteLine($"Session {closing.Id} closed: {closing.Engine.GetStats()}, maxAudioGap={closing.MaxAudioGapMs:F1}ms maxSinkWrite={closing.MaxSinkWriteMs:F1}ms");
+        Console.WriteLine($"Session {closing.Id} closed: {closing.Engine.GetStats()}, maxAudioGap={closing.MaxAudioGapMs:F1}ms maxSinkWrite={closing.MaxSinkWriteMs:F1}ms maxPlayoutLate={closing.MaxPlayoutLatenessMs:F1}ms skippedPlayoutFrames={closing.SkippedPlayoutFrames}");
         _session = null;
     }
 

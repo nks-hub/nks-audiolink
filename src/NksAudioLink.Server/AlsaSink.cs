@@ -6,6 +6,7 @@ namespace NksAudioLink.Server;
 public sealed class AlsaSink : IAudioSink
 {
     private IntPtr _pcm;
+    private readonly AlsaRecoveryLog _recoveryLog = new(Console.Error.WriteLine);
 
     public AlsaSink(string device, int latencyMs = 20)
     {
@@ -53,6 +54,7 @@ public sealed class AlsaSink : IAudioSink
                 if (result < 0)
                 {
                     int recovered = snd_pcm_recover(_pcm, (int)result, 1);
+                    _recoveryLog.Record((int)result, recovered);
                     if (recovered < 0) throw Error("writei/recover", recovered);
                     continue;
                 }
@@ -60,10 +62,12 @@ public sealed class AlsaSink : IAudioSink
                 written += checked((int)result);
             }
         }
+        _recoveryLog.FlushIfDue();
     }
 
     public void Dispose()
     {
+        _recoveryLog.Flush();
         if (_pcm != IntPtr.Zero)
         {
             snd_pcm_close(_pcm);
