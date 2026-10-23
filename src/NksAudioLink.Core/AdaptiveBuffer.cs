@@ -59,7 +59,7 @@ internal sealed class AdaptiveBufferController
             Status.TargetMs == _options.MaximumMs && p.EstimatedNeedMs >= Status.TargetMs ? "AtMaximum" :
             _frames - _lastIncrease < 400 ? "Cooldown" : _riskStreak > 0 ? "RiskPending" :
             _failureHoldFrames > 0 ? "FailureHold" :
-            p.EstimatedNeedMs <= Status.TargetMs - 10 ? "Settling" : "WithinDeadband";
+            p.EstimatedNeedMs <= Status.TargetMs - Protocol.FrameMs ? "Settling" : "WithinDeadband";
         return new(Math.Round(p.EstimatedNeedMs, 2), Math.Round(p.JitterSpreadMs, 2), Math.Round(p.TrendMarginMs, 2),
             p.Samples, p.WarmedUp, state, _riskStreak, (int)(_stableFrames * Protocol.FrameMs),
             p.DuplicatesIgnored, p.ReorderedPackets, p.OutdatedPacketsIgnored, p.Discontinuities);
@@ -102,7 +102,7 @@ internal sealed class AdaptiveBufferController
             // remember their tail for two clean minutes rather than repeatedly relearning it.
             if (_failureHoldFrames > 0)
             {
-                if (predictor.TailNeedMs > Status.TargetMs - 10) _failureHoldFrames = 24000;
+                if (predictor.TailNeedMs > Status.TargetMs - Protocol.FrameMs) _failureHoldFrames = 24000;
                 else if (playedFullFrame) _failureHoldFrames--;
             }
             if (_predictionGeneration != predictor.Generation)
@@ -118,7 +118,9 @@ internal sealed class AdaptiveBufferController
                 Status = Status with { TargetMs = Math.Min(_options.MaximumMs, Status.TargetMs + 10), Reason = AdaptiveBufferReason.PredictiveRisk, Changes = Status.Changes + 1 };
                 return true;
             }
-            if (playedFullFrame && predictor.EstimatedNeedMs <= Status.TargetMs - 10)
+            // The estimate already includes its safety margin. Require the next 5 ms
+            // step to cover that estimate rather than adding another margin at the floor.
+            if (playedFullFrame && predictor.EstimatedNeedMs <= Status.TargetMs - Protocol.FrameMs)
             {
                 _stableFrames = Math.Min(6000, _stableFrames + 1);
                 if (_stableFrames >= 6000 && _failureHoldFrames == 0 && Status.TargetMs > _options.MinimumMs)

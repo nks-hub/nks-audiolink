@@ -1,5 +1,20 @@
 # Validation
 
+## RC3 verification, 2026-10-23
+
+RC3 removes a duplicated downward safety reserve from predictive buffering. An estimated need around 16 ms could leave RC2 at 25 ms indefinitely; the next 20 ms target already covers that estimate, including its safety margin. The wire format, limits, increase protection, decrease persistence and learned failure hold are unchanged.
+
+| Check | RC3 evidence |
+|---|---|
+| Combined build/tests | All seven projects built in Release with zero warnings/errors. All 171 portable and 57 Windows client/CLI tests passed, alongside 16 dashboard and 36 package/version tests. |
+| Core coverage | Portable Cobertura: 96.52% lines and 88.98% branches. |
+| Low nonzero jitter | A 240-second deterministic scenario with 0–0.8 ms arrival variation descends 40→35→30→25→20 ms, at least 30 seconds apart, then stays at 20 ms without lost/late frames, underruns or oscillation. |
+| Learned hold | A single deliberate loss preserves the 120-second clean hold and eventually returns to 20 ms. A separate 20–25 ms bounded scenario verifies that harmless tail variation cannot renew the hold indefinitely at 25 ms. |
+| Regression proof | All three new cases fail against the immutable RC2 controller. The original alternating-jitter and 30/60/90-second recurring-delay protection cases continue to pass unchanged. |
+| Independent review | The downward comparison covers the next target with the already margin-inclusive estimate. A decrease still leaves a separate increase threshold, and rare threatening tails still renew learned protection. No blocking defect found. |
+
+These are deterministic controller checks, not a guarantee against unseen timing spikes or a physical latency measurement. Fresh packaged/deployed RC3 observations are recorded separately when available.
+
 ## RC2 verification, 2026-10-23
 
 RC2 replaces the desktop layout, adds predictive buffering with hysteresis and introduces live mute/limiting and explicit busy takeover. The published RC1 remains an immutable historical build. Current checks are distinct from the older physical measurements below.
@@ -19,7 +34,21 @@ RC2 replaces the desktop layout, adds predictive buffering with hysteresis and i
 | Proactive timing response | A 28.001-second timed-jitter run delivered 5,599 packets and 5,329 nonzero output frames. Target rose 40→50 ms with `PredictiveRisk` at 7.096 seconds while lost/late/underrun counts were still zero; all counters remained zero. The proxy introduced 0–30 ms delay and also observed up to 26.03 ms host scheduling lateness, so this is an application-level integration observation, not an ideal network-only trace or physical audio measurement. |
 | Published RC1 compatibility | The new CLI was exercised against the verified published RC1 Linux binary in isolated WSL. Predictive format `0x82` was rejected with an update/manual-mode explanation and no output session; manual mode connected, received ordinary STATS, exited normally and released the session, with zero jitter counters. |
 
-The native process-isolation measurement under RC1 below remains evidence for the unchanged capture implementation. Clipboard content is not overwritten during RC2 UI verification. A fresh deployed RC2 stability run is recorded separately when completed; earlier runs must not be relabeled as predictive-mode hardware evidence.
+The native process-isolation measurement under RC1 below remains evidence for the unchanged capture implementation. Clipboard content is not overwritten during RC2 UI verification. The fresh deployed RC2 run below has its own result; earlier runs must not be relabeled as predictive-mode hardware evidence.
+
+### RC2 publication and installation
+
+[Main CI 39957595554](https://github.com/nks-hub/nks-audiolink/actions/runs/39957595554) and [tag Release 39959020808](https://github.com/nks-hub/nks-audiolink/actions/runs/39959020808) passed for source `c8bc0f912a0109473cf1219be04c2b7f50ee2729`. [Published RC2](https://github.com/nks-hub/nks-audiolink/releases/tag/v0.1.0-rc.2) is a prerelease with the six expected assets. Strict local checks verified 26 Windows and 24 Linux package files, embedded runtime 9.0.20, source-bound documentation/resources, reports, checksums, manifest and executable versions. Release notes match the dated changelog. Both archives and all three executable binaries are byte-identical to the verified main-CI packages.
+
+The server was upgraded with a rollback backup and unchanged configuration; the older reactive RC1 client reconnected in approximately 2.7 seconds. The desktop then moved to the existing stable installation used by the Desktop shortcut, with replaced files backed up and additional files preserved. Graceful Quit saved the latest gain/source/buffer/startup preferences. About and installed hashes identify RC2; the new session acknowledges predictive mode, shows live target/history/meters and hides manual timing. Verification did not access the real clipboard.
+
+### RC2 predictive hardware observation
+
+One uninterrupted **600.012-second** read-only run collected 121 status/ALSA samples and 600 one-second history samples. Every history sample retained the same predictive session. The process, ALSA owner and trigger stayed unchanged, all ALSA states were RUNNING, and hardware position increased throughout. Server CPU was **1.482% of one core**; native counters and output/recovery journal events remained zero.
+
+**The zero-dropout gate failed:** one lost frame, one late frame and one underrun occurred at about 268.2 seconds. There were no overruns or duplicates. The target had descended from the client's initial 40 ms to 35 ms before monitoring, then to 30 and 25 ms. The timing burst raised it to 35 ms with `Underrun`; learned protection held it before later 30 and 25 ms steps. Estimates ranged from 15.96 to 35.90 ms. The observation does not isolate whether the burst originated in sender scheduling or the network. No settings were changed, counters reset or run repeated to obtain a passing result.
+
+The final 25 ms target with estimated need around 16 ms confirms the unnecessary RC2 downward reserve addressed in RC3. Removing that reserve does not claim to eliminate unseen timing spikes; RC3 requires its own live observation.
 
 ## Release candidate verification, 2026-10-23
 
@@ -73,7 +102,7 @@ The review covered SDK/build configuration, packet parsing, jitter recovery, cli
 | Windows standalone | App and CLI published as self-contained single-file win-x64 executables; bundle inspection confirms both .NET and WindowsDesktop 9.0.20. This inspection caught and corrected an initially mixed CLI runtime package. CLI help, discovery, busy rejection and takeover were exercised; the new desktop app replaced the previous instance through orderly Quit. |
 | Package audit | NuGet reported no known vulnerable direct or transitive packages using the configured feed. This is not a runtime or operating-system security audit. |
 
-The desktop preview and web screenshot are under `docs/screenshots`. They use a disconnected desktop and controlled example web values, without private device/address data; they are interface illustrations, not benchmark results. The existing HMAC protocol authenticates packets but does not encrypt audio or provide a complete replay-protection mechanism. The web monitor is read-only and restricted by `allowCidrs`; it has no TLS/login and must remain on the intended LAN or an SSH tunnel. Its suggested TCP port is **7356**, separate from UDP audio on 7355; HTTP remains disabled in the default server configuration.
+The desktop preview and web screenshot are under `docs/screenshots`. They use controlled example values without private device/address data; they are interface illustrations, not benchmark results. The existing HMAC protocol authenticates packets but does not encrypt audio or provide a complete replay-protection mechanism. The web monitor is read-only and restricted by `allowCidrs`; it has no TLS/login and must remain on the intended LAN or an SSH tunnel. Its suggested TCP port is **7356**, separate from UDP audio on 7355; HTTP remains disabled in the default server configuration.
 
 ### Additional live checks, 2026-10-23
 

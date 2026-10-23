@@ -12,9 +12,9 @@ public sealed class PredictiveBufferTests
     private static long Tick(double ms) => Stopwatch.Frequency * 1000 + (long)Math.Round(ms * Stopwatch.Frequency / 1000);
 
     private static Result Run(int initial, int seconds, Func<int, double>? delay = null, int driftPpm = 0,
-        Func<int, bool>? drop = null, bool duplicates = false, bool triangle = false)
+        Func<int, bool>? drop = null, bool duplicates = false, bool triangle = false, int maximum = 100)
     {
-        var engine = new PlayoutEngine(initial, new(20, 100, Predictive: true));
+        var engine = new PlayoutEngine(initial, new(20, maximum, Predictive: true));
         var packets = new List<(int Index, double Arrival)>();
         for (int i = 0; i <= seconds * 200; i++)
         {
@@ -215,5 +215,46 @@ public sealed class PredictiveBufferTests
         Assert.Contains(result.Observations, o => o.TimeMs > 8000 && o.Prediction.State == "FailureHold");
         Assert.Contains(result.Changes, c => c.Policy.Reason == AdaptiveBufferReason.Stable && c.TimeMs >= lastBurst * 1000 + 120_000);
         Assert.Equal(2, result.Engine.GetStats().Lost);
+    }
+
+    [Fact]
+    public void SmallNonzeroJitterReachesMinimumWithoutLossOrOscillation()
+    {
+        var result = Run(40, 240, i => .8 * (1 + Math.Sin(i / 18.0)) / 2);
+        Assert.Equal(20, result.Engine.TargetLatencyMs);
+        Assert.Equal(new[] { 35, 30, 25, 20 }, result.Changes.Select(c => c.Policy.TargetMs));
+        Assert.All(result.Changes, c => Assert.Equal(AdaptiveBufferReason.Stable, c.Policy.Reason));
+        Assert.All(result.Changes.Zip(result.Changes.Skip(1)), pair => Assert.True(pair.Second.TimeMs - pair.First.TimeMs >= 30_000));
+        Assert.All(result.Observations.Where(o => o.TimeMs >= 150_000), o => Assert.Equal(20, o.Policy.TargetMs));
+        Assert.InRange(result.Engine.GetPredictiveStatus()!.Value.EstimatedNeedMs, 15.5, 17);
+        Assert.Equal(0, result.Engine.GetStats().Lost);
+        Assert.Equal(0, result.Engine.GetStats().Underruns);
+        Assert.Equal(0, result.Engine.GetStats().Late);
+    }
+
+    [Fact]
+    public void FailureHoldExpiresWithHarmlessJitterAndEventuallyReturnsToMinimum()
+    {
+        var result = Run(40, 330, i => .8 * (1 + Math.Sin(i / 18.0)) / 2, drop: i => i == 600);
+        var failure = Assert.Single(result.Changes, c => c.Policy.Reason == AdaptiveBufferReason.Underrun);
+        Assert.DoesNotContain(result.Changes, c => c.Policy.Reason == AdaptiveBufferReason.Stable && c.TimeMs < failure.TimeMs + 120_000);
+        Assert.Equal(20, result.Engine.TargetLatencyMs);
+        Assert.Equal(1, result.Engine.GetStats().Lost);
+        Assert.Equal(1, result.Engine.GetStats().Underruns);
+        Assert.All(result.Changes.Where(c => c.TimeMs > failure.TimeMs), c => Assert.Equal(AdaptiveBufferReason.Stable, c.Policy.Reason));
+    }
+
+    [Fact]
+    public void FailureHoldAtTwentyFiveMsDoesNotRenewForeverForHarmlessTail()
+    {
+        var result = Run(20, 180, i => .8 * (1 + Math.Sin(i / 18.0)) / 2, drop: i => i == 600, maximum: 25);
+        var failure = Assert.Single(result.Changes, c => c.Policy.Reason == AdaptiveBufferReason.Underrun);
+        Assert.Equal(25, failure.Policy.TargetMs);
+        var decrease = Assert.Single(result.Changes, c => c.Policy.Reason == AdaptiveBufferReason.Stable);
+        Assert.InRange(decrease.TimeMs - failure.TimeMs, 120_000, 125_000);
+        Assert.Equal(20, result.Engine.TargetLatencyMs);
+        Assert.All(result.Observations.Where(o => o.TimeMs >= 150_000), o => Assert.Equal(20, o.Policy.TargetMs));
+        Assert.Equal(1, result.Engine.GetStats().Lost);
+        Assert.Equal(1, result.Engine.GetStats().Underruns);
     }
 }

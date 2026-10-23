@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.1.0-rc.3 — 2026-10-23
+
+Follow-up to minimize the adaptive target while preserving predictive protection and hysteresis. Earlier candidate tags and packages remain immutable.
+
+### Fixed
+
+- On a quiet link with an estimated need around 16 ms, RC2 could stop at 25 ms instead of reaching the negotiated 20 ms minimum. Decreases now require the next 5 ms step to cover the estimate, which already includes its safety margin.
+- Learned failure protection now renews only when recent tail delay threatens that next target. Harmless jitter cannot indefinitely renew the hold at a narrowly capped target.
+- Clarified the four capture modes and labeled the desktop screenshot as controlled example data.
+
+### Preserved
+
+- Thirty seconds of clean playback before each downward step, three confirmations before a predictive increase, the two-second increase cooldown and the 120-second learned post-failure hold.
+- Manual/legacy compatibility, 20–100 ms adaptive bounds, visible target/history and live audio controls.
+
+### Validation
+
+- All 171 portable and 57 Windows client/CLI tests passed, with 16 dashboard and 36 package/version tests. Core coverage is 96.52% of lines and 88.98% of branches.
+- Three new regressions fail against RC2 and pass with this correction: gradual minimum-target convergence with nonzero jitter, eventual settling after one loss, and expiration of a learned hold under a narrow 20–25 ms bound. Existing oscillation and recurring-delay protection tests remain unchanged and pass.
+
+### Known pending manual checks
+
+- The owner's flash/click synchronization assessment and physical ten-second network cable recovery check remain pending for a stable release.
+- Physical end-to-end latency remains unmeasured; displayed delay is an estimate.
+
+See [VALIDATION.md](docs/VALIDATION.md) for recorded tests and deployment evidence.
+
 ## 0.1.0-rc.2 — 2026-10-23
 
 Second release candidate, focused on the complete desktop workflow and predictive buffering. RC1 remains an immutable historical release.

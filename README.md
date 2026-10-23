@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/nks-hub/nks-audiolink/actions/workflows/ci.yml/badge.svg)](https://github.com/nks-hub/nks-audiolink/actions/workflows/ci.yml)
 [![Release build](https://github.com/nks-hub/nks-audiolink/actions/workflows/release.yml/badge.svg)](https://github.com/nks-hub/nks-audiolink/actions/workflows/release.yml)
-[![Version](https://img.shields.io/badge/version-0.1.0--rc.2-orange.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.1.0--rc.3-orange.svg)](CHANGELOG.md)
 [![.NET 9](https://img.shields.io/badge/.NET-9-512BD4.svg)](https://dotnet.microsoft.com/)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%2B%20Linux-0078D4.svg)](#how-it-works)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -13,11 +13,11 @@ AudioLink provides a Windows WPF app, a command-line client and a Linux systemd 
 
 ![NKS AudioLink borderless Windows app](docs/screenshots/client-preview.png)
 
-Disconnected interface preview rendered without opening audio devices. The optional [server dashboard](docs/INSTALL.md#optional-server-dashboard) adds live monitoring in a browser.
+Interface preview with controlled example values, rendered without opening audio devices. The optional [server dashboard](docs/INSTALL.md#optional-server-dashboard) adds live monitoring in a browser.
 
 ## Features
 
-- 🎙️ **Three capture modes** - the full output of a selected playback device, a separately installed VB-CABLE virtual device, or another recording input. Virtual mode switches the Windows default output while connected and restores it on disconnect.
+- 🎙️ **Four capture modes** - the full output of a selected playback device, one application and its children, a separately installed VB-CABLE virtual device, or another recording input. Virtual mode switches the Windows default output while connected and restores it on disconnect.
 - 🔊 **Linux audio output** - direct ALSA playback as an unprivileged systemd service. WAV and null outputs are available for diagnostics.
 - ⏱️ **Timing and recovery** - a jitter buffer absorbs short variations in packet arrival. Clock drift correction and silent frames keep the audio timeline running. The client reconnects after server outages and recreates capture after a device error.
 - 📊 **Controls and statistics** - server discovery, target buffer, live gain adjustment, a system tray menu and statistics for buffer fill, output queue delay, network RTT, lost and late frames, underruns and overruns.
@@ -44,7 +44,7 @@ Disconnected interface preview rendered without opening audio devices. The optio
 
 ### Portable packages
 
-Version **0.1.0-rc.2** is the release candidate for the current review. Tagged builds provide `nks-audiolink-windows-x64.zip` and `nks-audiolink-linux-x64.tar.gz` on [GitHub Releases](https://github.com/nks-hub/nks-audiolink/releases). Both include .NET runtime 9.0.20, so the target machines do not need a separate runtime installation. The Windows archive contains `NksAudioLink.App.exe` and the CLI in `cli/`.
+Version **0.1.0-rc.3** is the release candidate for the current review. Tagged builds provide `nks-audiolink-windows-x64.zip` and `nks-audiolink-linux-x64.tar.gz` on [GitHub Releases](https://github.com/nks-hub/nks-audiolink/releases). Both include .NET runtime 9.0.20, so the target machines do not need a separate runtime installation. The Windows archive contains `NksAudioLink.App.exe` and the CLI in `cli/`.
 
 Successful pushes to `main` also produce both verified binary packages as downloadable artifacts in [CI](https://github.com/nks-hub/nks-audiolink/actions/workflows/ci.yml). Release candidates are marked **Pre-release**; the remaining subjective synchronization and physical cable checks are listed in [TODO.md](TODO.md). See [versioning and release instructions](docs/RELEASING.md) for the difference between CI artifacts, release candidates and stable releases.
 
@@ -108,7 +108,7 @@ dotnet publish src/NksAudioLink.Server/NksAudioLink.Server.csproj \
 
 | Check | Result and scope |
 |---|---|
-| Automated tests | The RC2 review passed 168 portable Core/server/HTTP/queue/meter/DSP tests, 57 Windows client/CLI tests, 16 dashboard tests and 36 package/version/release-note tests. Core coverage from the portable suite is **96.52% of lines** and **88.84% of branches**. Real process isolation and authenticated adaptive-buffer integration have separate recorded evidence. |
+| Automated tests | The RC3 review passed 171 portable Core/server/HTTP/queue/meter/DSP tests, 57 Windows client/CLI tests, 16 dashboard tests and 36 package/version/release-note tests. Core coverage from the portable suite is **96.52% of lines** and **88.98% of branches**. Real process isolation and authenticated adaptive-buffer integration have separate recorded evidence. |
 | LAN and physical ALSA | The .NET 9.0.20 server and Windows client ran for **600 seconds with a 30 ms target buffer**. All 60 client samples showed zero lost or late frames, underruns and overruns. ALSA was RUNNING in all 120 samples; the server process and session remained unchanged. A separate 10 ms run accumulated late frames. |
 | Tone and virtual mode | A 440 Hz Windows-to-Linux WAV test lasted 5.095 seconds with RMS 8,484 and no overruns or late frames. CABLE Input to CABLE Output transport was also confirmed by WAV analysis. |
 | UI latency estimate | One live observation was **about 74 ms**: 10 ms WASAPI capture, about 15 ms client queue, a 5 ms frame, about 0.25 ms half-RTT, 25 ms server buffer and 19 ms ALSA queue delay. This is a sum of known stages, not a physical end-to-end measurement. |
