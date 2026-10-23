@@ -13,7 +13,23 @@ RC3 removes a duplicated downward safety reserve from predictive buffering. An e
 | Regression proof | All three new cases fail against the immutable RC2 controller. The original alternating-jitter and 30/60/90-second recurring-delay protection cases continue to pass unchanged. |
 | Independent review | The downward comparison covers the next target with the already margin-inclusive estimate. A decrease still leaves a separate increase threshold, and rare threatening tails still renew learned protection. No blocking defect found. |
 
-These are deterministic controller checks, not a guarantee against unseen timing spikes or a physical latency measurement. Fresh packaged/deployed RC3 observations are recorded separately when available.
+These deterministic controller checks do not guarantee protection against unseen timing spikes or measure physical latency. The separate packaged/deployed observation follows.
+
+### RC3 package, installation and hardware observation
+
+[Main CI 39961190436](https://github.com/nks-hub/nks-audiolink/actions/runs/39961190436) passed for source `c6a45b217f373290dcf38ebabb47d2b74d5484e1`. Strict local checks verified both archives, all 26 Windows and 24 Linux files, embedded runtime 9.0.20, source-bound documentation/resources, reports, checksums, manifest and executable versions. A cold WSL startup initially exceeded the local version probe's 30-second timeout; a longer startup allowance returned the correct server version with exit code zero, without restarting WSL or changing the live service.
+
+The verified server was installed with a rollback backup and unchanged configuration. The existing RC2 client reconnected in approximately **1.98 seconds**. The verified RC3 desktop then replaced the stable installation used by the Desktop shortcut, preserving the latest gain/source/adaptive/manual/startup settings and additional files. All installed package files and About version were checked. No real clipboard or live effect controls were used during verification.
+
+One fresh **600.011-second** hardware run passed every gate: 121 status/ALSA samples and 600 one-second history samples retained the same predictive session, process, ALSA owner and trigger. Every ALSA state was RUNNING, hardware position increased throughout, all jitter/native counters remained **zero**, and the output/recovery journal had no events. Server CPU was **1.548% of one core**.
+
+The target reached the negotiated **20 ms** minimum and stayed there for 525 of the run's 600 history samples. Predicted need ranged from **15.94 to 18.14 ms**. Separate startup history records the full **40→35→30→25→20 ms** sequence at 0/30/60/90/120.001 seconds from its first session sample; the ten-minute monitor began after the first downward step. The desktop's independent 600-second check also stayed Connected, with unchanged gain, active meters, a live matching graph, zero read errors and zero lost/late/underrun/overrun counters. There were no manual setting changes, restarts or retries during either run. These observations establish this run's behavior, not universal dropout immunity or measured end-to-end latency.
+
+### RC3 release-test fixture correction
+
+The first [tagged release attempt](https://github.com/nks-hub/nks-audiolink/actions/runs/39962553144/attempts/1) timed out in the Windows SDK 9.0.318 limiter-tail integration test; fail-fast cancelled 9.0.203. Linux jobs passed. The same source had passed the main CI matrix. The timeout did not demonstrate a product PCM failure.
+
+Independent probes reproduced two fixture defects: accessing the synthetic source queue for sender-side clearing could consume its only audio refill, and the fake peer ignored re-HELLO after a sender scheduling interruption. A forced 100 ms pause made the old fake peer time out deterministically. The test-only correction waits for acknowledged silent readiness, supplies continuous PCM until observed capture is stopped, and answers control packets. It keeps the exact 48-frame PCM tail, subsequent silence and meter assertions, plus the original eight-second deadline. All 57 client tests and five repeated forced-pause cases passed. The CI log contains no sender timing trace, so the precise original trigger remains inferred. Production code, candidate version, tag and installed binaries are unchanged by this fixture correction; one evidence-based retry of the original tagged jobs retains the failed attempt in history.
 
 ## RC2 verification, 2026-10-23
 

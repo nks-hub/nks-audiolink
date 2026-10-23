@@ -12,19 +12,31 @@ public sealed class OutputProcessingClientTests
     public async Task LimiterTailIsSentAfterCaptureRunsDryThenSilentPacketsAdvanceTheMeter()
     {
         using var server = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
-        var source = new Source(12000, -6000) { Refills = 1 };
+        var source = new Source(12000, -6000) { Producing = false };
         var client = new AudioStreamClient(Config(server) with { LimiterEnabled = true }, (_, _) => source);
         using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(8));
         Task running = client.RunAsync(null, true, stop.Token);
         try
         {
             await Accept(server, stop.Token);
+            // Establish an accepted, silent sender before supplying PCM. A one-shot
+            // Queue getter refill can be consumed by the sender's stale-data Clear.
+            for (int i = 0; i < 3; i++) Assert.True((await Audio(server, stop.Token)).Silent);
+            source.PauseNextReadMilliseconds = 100;
+            int reconnects = 0;
+            while (reconnects == 0)
+                Assert.True((await Audio(server, stop.Token, () => reconnects++)).Silent);
+            // The forced scheduling discontinuity must re-HELLO and be accepted;
+            // ignoring that control packet previously stranded this fake peer.
+            Assert.True(reconnects > 0);
+            source.Producing = true;
             var audible = new List<short[]>();
             while (true)
             {
                 var packet = await Audio(server, stop.Token);
                 if (packet.Silent && audible.Count > 0) break;
                 if (!packet.Silent) audible.Add(packet.Pcm);
+                if (audible.Count >= 3) source.Producing = false;
             }
             Assert.True(audible.Count >= 3);
             short[] tail = audible[^1];
@@ -100,7 +112,7 @@ public sealed class OutputProcessingClientTests
             for (int i = 0; i < 10; i++) await Audio(server, stop.Token);
             await Stats(server, connection.Endpoint, connection.Session, false, stop.Token);
             await rejected.Task.WaitAsync(stop.Token);
-            source.Refills = 0;
+            source.Producing = false;
             source.Queue.Clear();
             // Drain datagrams sent before the rejection was observed.
             while (server.Available > 0) await server.ReceiveAsync(stop.Token);
@@ -147,12 +159,18 @@ public sealed class OutputProcessingClientTests
         await server.SendAsync(packet.AsMemory(0, size), endpoint, stop);
     }
 
-    private static async Task<(bool Silent, short[] Pcm)> Audio(UdpClient server, CancellationToken stop)
+    private static async Task<(bool Silent, short[] Pcm)> Audio(UdpClient server, CancellationToken stop, Action? helloReceived = null)
     {
         while (true)
         {
             var packet = await server.ReceiveAsync(stop);
             Assert.True(Protocol.TryRead(packet.Buffer, [], out var header, out var body));
+            if (header.Type is PacketType.Hello or PacketType.Ping)
+            {
+                await Stats(server, packet.RemoteEndPoint, header.Session, true, stop);
+                if (header.Type == PacketType.Hello) helloReceived?.Invoke();
+                continue;
+            }
             if (header.Type != PacketType.Audio) continue;
             bool silent = header.Flags.HasFlag(PacketFlags.Silent);
             Assert.True(AudioMessage.TryRead(body, silent, out _, out var pcm));
@@ -166,16 +184,19 @@ public sealed class OutputProcessingClientTests
     {
         private readonly AudioFrameQueue _queue = new();
         private readonly byte[] _pcm = Pcm(left, right);
-        private int _refills = int.MaxValue;
-        public int Refills { get => Volatile.Read(ref _refills); set => Volatile.Write(ref _refills, value); }
+        private int _producing = 1;
+        private int _pauseNextReadMilliseconds;
+        public bool Producing { get => Volatile.Read(ref _producing) != 0; set => Volatile.Write(ref _producing, value ? 1 : 0); }
+        public int PauseNextReadMilliseconds { set => Interlocked.Exchange(ref _pauseNextReadMilliseconds, value); }
         public AudioFrameQueue Queue
         {
             get
             {
-                if (Thread.CurrentThread.Name == "NKS AudioLink sender" && Refills > 0)
+                if (Thread.CurrentThread.Name == "NKS AudioLink sender")
                 {
-                    Interlocked.Decrement(ref _refills);
-                    _queue.Write(_pcm);
+                    int pause = Interlocked.Exchange(ref _pauseNextReadMilliseconds, 0);
+                    if (pause > 0) Thread.Sleep(pause);
+                    if (Producing) _queue.Write(_pcm);
                 }
                 return _queue;
             }
