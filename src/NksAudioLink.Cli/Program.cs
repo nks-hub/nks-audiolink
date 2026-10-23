@@ -6,6 +6,7 @@ using System.Net.Sockets;
 using System.Net.NetworkInformation;
 using System.Security.Cryptography;
 using NksAudioLink.Client;
+using NksAudioLink.Cli;
 using NksAudioLink.Core;
 
 try
@@ -15,11 +16,12 @@ try
         Console.WriteLine("NKS AudioLink commands:");
         Console.WriteLine("NksAudioLink.Cli.exe devices");
         Console.WriteLine("NksAudioLink.Cli.exe discover [--port PORT] [--config FILE]");
-        Console.WriteLine("NksAudioLink.Cli.exe send --server HOST [--mode loopback|capture] [--device ID] [--seconds N] [--gain 0..4] [--takeover true|false] [--config FILE]");
-        Console.WriteLine("NksAudioLink.Cli.exe test-tone --server HOST [--port PORT] [--seconds N] [--config FILE]");
+        Console.WriteLine("NksAudioLink.Cli.exe send --server HOST [--port PORT] [--latency MS] [--mode loopback|capture] [--device ID] [--seconds N] [--gain 0..4] [--takeover true|false] [--config FILE]");
+        Console.WriteLine("NksAudioLink.Cli.exe test-tone --server HOST [--port PORT] [--seconds N] [--gain 0..4] [--config FILE]");
         Console.WriteLine("devices: list audio devices; discover: find servers on the local network.");
         Console.WriteLine("send: stream audio; test-tone: send a 440 Hz test tone.");
         Console.WriteLine("--gain 1 keeps the original level; higher values may clip.");
+        Console.WriteLine("Explicit options override --config values regardless of argument order.");
         return;
     }
     if (args[0] == "devices")
@@ -30,18 +32,7 @@ try
     }
     if (args[0] == "discover")
     {
-        var discoverConfig = new ClientConfig();
-        for (int i = 1; i < args.Length; i++)
-        {
-            if (i + 1 >= args.Length) throw new ArgumentException($"Missing value after {args[i]}.");
-            switch (args[i++])
-            {
-                case "--port": discoverConfig = discoverConfig with { Port = int.Parse(args[i]) }; break;
-                case "--config": discoverConfig = ClientConfig.Load(args[i]); break;
-                default: throw new ArgumentException($"Unknown option: {args[i - 1]}");
-            }
-        }
-        discoverConfig.Validate();
+        var discoverConfig = CommandLineOptions.Parse(args).Config;
         byte[] discoverKey = string.IsNullOrEmpty(discoverConfig.PskBase64) ? [] : Convert.FromBase64String(discoverConfig.PskBase64);
         byte[] request = new byte[Protocol.MaxDatagramSize];
         int requestLength = Protocol.Write(request, new(PacketType.Discover, PacketFlags.None, 0, 0), [], discoverKey);
@@ -91,30 +82,13 @@ try
     }
     if (args[0] == "send")
     {
-        var sendConfig = new ClientConfig();
-        bool loopback = true;
-        bool takeover = false;
-        int sendSeconds = 0;
-        string? deviceId = null;
-        for (int i = 1; i < args.Length; i++)
-        {
-            if (i + 1 >= args.Length) throw new ArgumentException($"Missing value after {args[i]}.");
-            switch (args[i++])
-            {
-                case "--server": sendConfig = sendConfig with { Server = args[i] }; break;
-                case "--port": sendConfig = sendConfig with { Port = int.Parse(args[i]) }; break;
-                case "--latency": sendConfig = sendConfig with { TargetLatencyMs = int.Parse(args[i]) }; break;
-                case "--gain": sendConfig = sendConfig with { Gain = double.Parse(args[i], System.Globalization.CultureInfo.InvariantCulture) }; break;
-                case "--seconds": sendSeconds = int.Parse(args[i]); break;
-                case "--takeover": takeover = bool.Parse(args[i]); break;
-                case "--device": deviceId = args[i]; break;
-                case "--mode": loopback = args[i] switch { "loopback" => true, "capture" => false, _ => throw new ArgumentException("Use loopback or capture with --mode.") }; break;
-                case "--config": sendConfig = ClientConfig.Load(args[i]); break;
-                default: throw new ArgumentException($"Unknown option: {args[i - 1]}");
-            }
-        }
+        var options = CommandLineOptions.Parse(args);
+        var sendConfig = options.Config;
+        bool loopback = options.Loopback;
+        bool takeover = options.Takeover;
+        int sendSeconds = options.Seconds;
+        string? deviceId = options.DeviceId;
         using var stop = new CancellationTokenSource();
-        if (sendSeconds is < 0 or > 3600) throw new ArgumentOutOfRangeException(nameof(sendSeconds));
         if (sendSeconds > 0) stop.CancelAfter(TimeSpan.FromSeconds(sendSeconds));
         Console.CancelKeyPress += (_, e) => { e.Cancel = true; stop.Cancel(); };
         var client = new AudioStreamClient(sendConfig);
@@ -124,25 +98,12 @@ try
         return;
     }
     if (args[0] != "test-tone") throw new ArgumentException("Unknown command. Run NksAudioLink.Cli.exe --help to list commands.");
-    var config = new ClientConfig();
-    int seconds = 5;
-    for (int i = 1; i < args.Length; i++)
-    {
-        if (i + 1 >= args.Length) throw new ArgumentException($"Missing value after {args[i]}.");
-        switch (args[i++])
-        {
-            case "--server": config = config with { Server = args[i] }; break;
-            case "--port": config = config with { Port = int.Parse(args[i]) }; break;
-            case "--seconds": seconds = int.Parse(args[i]); break;
-            case "--gain": config = config with { Gain = double.Parse(args[i], System.Globalization.CultureInfo.InvariantCulture) }; break;
-            case "--config": config = ClientConfig.Load(args[i]); break;
-            default: throw new ArgumentException($"Unknown option: {args[i - 1]}");
-        }
-    }
-    config.Validate();
-    if (seconds is < 1 or > 3600) throw new ArgumentOutOfRangeException(nameof(seconds));
+    var toneOptions = CommandLineOptions.Parse(args);
+    var config = toneOptions.Config;
+    int seconds = toneOptions.Seconds;
     using var timerResolution = new WindowsTimerResolution();
-    IPAddress address = (await Dns.GetHostAddressesAsync(config.Server)).First(a => a.AddressFamily == AddressFamily.InterNetwork);
+    IPAddress address = (await Dns.GetHostAddressesAsync(config.Server)).FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork)
+        ?? throw new NotSupportedException($"The server '{config.Server}' has no IPv4 address. Use an IPv4 address or a hostname with an IPv4 record.");
     var endpoint = new IPEndPoint(address, config.Port);
     using var udp = new UdpClient(AddressFamily.InterNetwork);
     udp.Connect(endpoint);
@@ -164,7 +125,12 @@ try
     bool accepted = false;
     while (!accepted)
     {
-        var response = await udp.ReceiveAsync(handshake.Token);
+        UdpReceiveResult response;
+        try { response = await udp.ReceiveAsync(handshake.Token); }
+        catch (OperationCanceledException) when (handshake.IsCancellationRequested)
+        {
+            throw new TimeoutException("The server did not accept the test tone within two seconds. Check the server address, port and shared key.");
+        }
         if (!Protocol.TryRead(response.Buffer, key, out var header, out var responseBody) || header.Session != session) continue;
         if (header.Type == PacketType.Reject) throw new InvalidOperationException($"The server rejected the connection (code {(responseBody.IsEmpty ? 0 : responseBody[0])}). Check the shared key and whether another client is connected.");
         if (header.Type == PacketType.Stats && StatsMessage.TryRead(responseBody, out var stats)) accepted = stats.Accepted;
@@ -190,13 +156,14 @@ try
                 {
                     latestStats = stats;
                     if (++statsReceived % 10 == 0)
-                        Console.WriteLine($"stats buffer={stats.BufferMs}ms sink={stats.SinkDelayMs}ms underruns={stats.Underruns} overruns={stats.Overruns} lost={stats.Lost} late={stats.Late} ratio={stats.RatioPpm}ppm sendGapMax={largestSendGapMs:F1}ms gaps>10={sendGapsOver10Ms}");
+                        Console.WriteLine($"stats buffer={stats.BufferMs}ms sink={stats.SinkDelayMs}ms underruns={stats.Underruns} overruns={stats.Overruns} lost={stats.Lost} late={stats.Late} ratio={stats.RatioPpm}ppm sendGapMax={Volatile.Read(ref largestSendGapMs):F1}ms gaps>10={Volatile.Read(ref sendGapsOver10Ms)}");
                 }
-                else if (header.Type == PacketType.Reject)
-                    Console.Error.WriteLine("The server ended the active session. Check whether another client connected.");
+                else if (header.Type == PacketType.Reject && responseBody.Length == 1 && Enum.IsDefined((RejectReason)responseBody[0]))
+                    throw new ServerRejectedException((RejectReason)responseBody[0]);
             }
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException) when (statusStop.IsCancellationRequested) { }
+        catch { statusStop.Cancel(); throw; }
     }
 
     Console.WriteLine($"Sending a 440 Hz tone to {endpoint} for {seconds} s.");
@@ -208,14 +175,14 @@ try
         try
         {
             long startTick = Stopwatch.GetTimestamp();
-            for (int frame = 0; frame < frames + trailingSilentFrames; frame++)
+            for (int frame = 0; frame < frames + trailingSilentFrames && !statusStop.IsCancellationRequested; frame++)
             {
                 long sendTick = Stopwatch.GetTimestamp();
                 if (previousSendTick != 0)
                 {
                     double gapMs = (sendTick - previousSendTick) * 1000.0 / Stopwatch.Frequency;
-                    largestSendGapMs = Math.Max(largestSendGapMs, gapMs);
-                    if (gapMs > 10) sendGapsOver10Ms++;
+                    Volatile.Write(ref largestSendGapMs, Math.Max(largestSendGapMs, gapMs));
+                    if (gapMs > 10) Interlocked.Increment(ref sendGapsOver10Ms);
                 }
                 previousSendTick = sendTick;
                 if (frame > 0 && frame % 400 == 0)
@@ -237,7 +204,7 @@ try
                 int length = Protocol.Write(packet, new(PacketType.Audio, silent ? PacketFlags.Silent : PacketFlags.None, session, ++sequence), body.AsSpan(0, size), key);
                 udp.Send(packet, length);
                 long deadline = startTick + (long)((frame + 1) * Protocol.FrameMs * (double)Stopwatch.Frequency / 1000);
-                while (true)
+                while (!statusStop.IsCancellationRequested)
                 {
                     long remaining = deadline - Stopwatch.GetTimestamp();
                     if (remaining <= 0) break;
@@ -252,11 +219,21 @@ try
             senderDone.TrySetException(error);
         }
     }) { IsBackground = true, Priority = ThreadPriority.Highest, Name = "NKS AudioLink test sender" };
-    sender.Start();
-    await senderDone.Task;
-    statusStop.Cancel();
-    await statusTask;
-    await Send(PacketType.Bye, PacketFlags.None, ReadOnlyMemory<byte>.Empty);
+    try
+    {
+        sender.Start();
+        await senderDone.Task;
+    }
+    finally
+    {
+        statusStop.Cancel();
+        try { await statusTask; }
+        finally
+        {
+            try { await Send(PacketType.Bye, PacketFlags.None, ReadOnlyMemory<byte>.Empty); }
+            catch (SocketException) { }
+        }
+    }
     Console.WriteLine($"final stats: received={statsReceived} buffer={latestStats.BufferMs}ms sink={latestStats.SinkDelayMs}ms underruns={latestStats.Underruns} overruns={latestStats.Overruns} lost={latestStats.Lost} late={latestStats.Late} ratio={latestStats.RatioPpm}ppm");
     Console.WriteLine($"send timing: largest gap={largestSendGapMs:F1}ms gaps>10ms={sendGapsOver10Ms}");
     Console.WriteLine("Done.");

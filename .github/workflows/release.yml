@@ -14,9 +14,16 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Test package verification
+        run: python -m unittest discover -s tests -p test_release_verification.py
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '9.0.318'
+      - name: Select release SDK
+        run: dotnet new globaljson --sdk-version 9.0.318 --roll-forward disable --force
       - name: Test Windows solution
         run: dotnet test NksAudioLink.sln --configuration Release
       - name: Publish Windows app
@@ -28,43 +35,57 @@ jobs:
         run: |
           New-Item -ItemType Directory -Path publish/windows/cli -Force | Out-Null
           Copy-Item -Path publish/cli/* -Destination publish/windows/cli -Recurse -Force
-          Copy-Item README.md, TODO.md, CHANGELOG.md, THIRD_PARTY_NOTICES.md -Destination publish/windows
+          Copy-Item README.md, LICENSE, TODO.md, CHANGELOG.md, THIRD_PARTY_NOTICES.md -Destination publish/windows
           Copy-Item docs -Destination publish/windows/docs -Recurse
           New-Item -ItemType Directory -Path publish/windows/licenses -Force | Out-Null
           Copy-Item deploy/licenses/dotnet-coreapp-win-x64 -Destination publish/windows/licenses/dotnet-coreapp-win-x64 -Recurse
           Copy-Item deploy/licenses/dotnet-windowsdesktop-win-x64 -Destination publish/windows/licenses/dotnet-windowsdesktop-win-x64 -Recurse
-          Compress-Archive -Path publish/windows/* -DestinationPath nks-audiolink-windows-x64.zip -CompressionLevel Optimal -Force
+      - name: Verify and package Windows release
+        run: python tools/verify_release.py publish/windows --platform windows-x64 --create-archive nks-audiolink-windows-x64.zip --report windows-package-verification.json
       - uses: actions/upload-artifact@v4
         with:
           name: windows-x64
-          path: nks-audiolink-windows-x64.zip
+          path: |
+            nks-audiolink-windows-x64.zip
+            windows-package-verification.json
           if-no-files-found: error
 
   linux:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Test package verification
+        run: python -m unittest discover -s tests -p test_release_verification.py
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '9.0.318'
+      - name: Select release SDK
+        run: dotnet new globaljson --sdk-version 9.0.318 --roll-forward disable --force
       - name: Test portable code
         run: dotnet test tests/NksAudioLink.Tests/NksAudioLink.Tests.csproj --configuration Release
       - name: Publish Linux server
         run: dotnet publish src/NksAudioLink.Server/NksAudioLink.Server.csproj --configuration Release --runtime linux-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true --output publish/linux
       - name: Add documentation and package
         run: |
-          cp README.md TODO.md CHANGELOG.md THIRD_PARTY_NOTICES.md publish/linux/
+          cp README.md LICENSE TODO.md CHANGELOG.md THIRD_PARTY_NOTICES.md publish/linux/
           cp -R docs publish/linux/docs
           mkdir -p publish/linux/licenses
           cp -R deploy/licenses/dotnet-coreapp-linux-x64 publish/linux/licenses/
+          cp -R deploy/licenses/dotnet-aspnetcore-linux-x64 publish/linux/licenses/
           mkdir -p publish/linux/deploy
           cp -R deploy/linux publish/linux/deploy/linux
           chmod +x publish/linux/NksAudioLink.Server publish/linux/deploy/linux/install.sh
-          tar -czf nks-audiolink-linux-x64.tar.gz -C publish/linux .
+      - name: Verify and package Linux release
+        run: python tools/verify_release.py publish/linux --platform linux-x64 --create-archive nks-audiolink-linux-x64.tar.gz --report linux-package-verification.json
       - uses: actions/upload-artifact@v4
         with:
           name: linux-x64
-          path: nks-audiolink-linux-x64.tar.gz
+          path: |
+            nks-audiolink-linux-x64.tar.gz
+            linux-package-verification.json
           if-no-files-found: error
 
   github_release:

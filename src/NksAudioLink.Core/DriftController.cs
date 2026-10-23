@@ -10,7 +10,7 @@ public sealed class DriftController
 
     public DriftController(double targetMs)
     {
-        if (targetMs is < 5 or > 200) throw new ArgumentOutOfRangeException(nameof(targetMs));
+        if (!double.IsFinite(targetMs) || targetMs is < 5 or > 200) throw new ArgumentOutOfRangeException(nameof(targetMs));
         _targetMs = targetMs;
     }
 

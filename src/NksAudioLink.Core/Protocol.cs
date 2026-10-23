@@ -118,7 +118,8 @@ public readonly record struct HelloMessage(uint SampleRate, byte Channels, byte 
         catch (System.Text.DecoderFallbackException) { return false; }
     }
 
-    public bool IsSupported => SampleRate == Protocol.SampleRate && Channels == Protocol.Channels && Format == 1 && FrameMs == Protocol.FrameMs && TargetLatencyMs is >= 10 and <= 200;
+    public bool IsSupported => SampleRate == Protocol.SampleRate && Channels == Protocol.Channels && Format == 1 &&
+        FrameMs == Protocol.FrameMs && TargetLatencyMs is >= 10 and <= 200 && TargetLatencyMs % Protocol.FrameMs == 0;
 }
 
 public static class AudioMessage
@@ -142,6 +143,7 @@ public static class AudioMessage
         if (body.Length < PrefixSize || BinaryPrimitives.ReadUInt16LittleEndian(body[8..]) != Protocol.SamplesPerFrame ||
             body.Length != PrefixSize + (silent ? 0 : Protocol.PcmBytesPerFrame)) return false;
         sampleIndex = BinaryPrimitives.ReadUInt64LittleEndian(body);
+        if (sampleIndex % Protocol.SamplesPerFrame != 0) return false;
         pcm = body[PrefixSize..];
         return true;
     }

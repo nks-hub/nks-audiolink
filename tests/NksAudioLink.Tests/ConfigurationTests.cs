@@ -20,6 +20,29 @@ public class ConfigurationTests
     {
         Assert.Throws<InvalidDataException>(() => new ServerConfig { PskBase64 = Convert.ToBase64String([1, 2, 3]) }.Validate());
         Assert.Throws<InvalidDataException>(() => new ServerConfig { AllowCidrs = ["10.0.0.0/33"] }.Validate());
+        Assert.Throws<InvalidDataException>(() => new ServerConfig { AllowCidrs = [null!] }.Validate());
+    }
+
+    [Theory]
+    [InlineData(-1, "127.0.0.1")]
+    [InlineData(65536, "127.0.0.1")]
+    [InlineData(7356, "localhost")]
+    [InlineData(7356, "0.0.0.0")]
+    [InlineData(7356, "255.255.255.255")]
+    [InlineData(7356, "::1")]
+    [InlineData(7356, null)]
+    public void HttpDashboardRejectsInvalidListenSettings(int port, string? address)
+    {
+        Assert.Throws<InvalidDataException>(() => new ServerConfig { HttpPort = port, HttpBindAddress = address! }.Validate());
+    }
+
+    [Fact]
+    public void HttpDashboardSupportsExplicitLocalAndLanAddresses()
+    {
+        Assert.Equal(0, new ServerConfig().HttpPort);
+        Assert.Equal("127.0.0.1", new ServerConfig().HttpBindAddress);
+        new ServerConfig { HttpPort = 7356 }.Validate();
+        new ServerConfig { HttpPort = 7356, HttpBindAddress = "192.168.1.50" }.Validate();
     }
 
     [Fact]

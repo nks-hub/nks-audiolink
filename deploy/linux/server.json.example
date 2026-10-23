@@ -1,5 +1,7 @@
 {
   "port": 7355,
+  "httpPort": 0,
+  "httpBindAddress": "127.0.0.1",
   "name": "NKS AudioLink",
   "sink": "alsa:default",
   "allowCidrs": ["127.0.0.0/8"],

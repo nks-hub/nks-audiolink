@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NKS AudioLink · Server</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%2370E2C4'/%3E%3Cpath d='M14 27V37 M23 19V45 M32 12V52 M41 22V42 M50 27V37' stroke='%23102331' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E">
+  <style>
+    :root { color-scheme: dark; font-family: 'Segoe UI', system-ui, sans-serif; background: #0d1420; color: #edf3fa; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { max-width: 1100px; margin: auto; padding: 24px; }
+    header, .row { display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
+    .brand { display: flex; gap: 15px; align-items: center; }
+    .mark { width: 40px; height: 40px; color: #76e0cc; }
+    h1 { font-size: 23px; letter-spacing: -.4px; margin: 0; }
+    p { color: #a2b3c9; margin: 6px 0 0; line-height: 1.6; }
+    header { margin-bottom: 20px; }
+    .pill { padding: 8px 14px; border: 1px solid #3b4c62; border-radius: 30px; font-size: 13px; color: #c1cedd; }
+    .pill.live { color: #8ce8c7; background: #153a34; border-color: #2f6c5d; }
+    .pill.error { color: #ffbdac; border-color: #8d5144; }
+    .eyebrow { font-size: 12px; color: #a2b3c9; margin-bottom: 6px; }
+    .panel { background: #152131; border: 1px solid #29384b; border-radius: 10px; padding: 18px; margin-top: 14px; }
+    .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 16px; }
+    .metric { padding: 12px 14px; background: #19283b; border: 1px solid #2b3d53; border-radius: 7px; min-width: 0; }
+    .label { font-size: 12px; color: #a2b3c9; }
+    .value { display: block; margin-top: 6px; font-size: 27px; letter-spacing: -.7px; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+    .unit { font-size: 13px; color: #a2b3c9; font-weight: 400; }
+    .small { font-size: 12px; color: #a2b3c9; }
+    h2 { font-size: 17px; font-weight: 600; margin: 0; overflow-wrap: anywhere; }
+    .row > div { min-width: 0; max-width: 100%; }
+    .counters { display: grid; grid-template-columns: repeat(5, 1fr); gap: 20px; margin-top: 14px; }
+    .counters .value { font-size: 24px; }
+    button, a { background: #22364d; border: 1px solid #405670; border-radius: 8px; padding: 9px 13px; font: inherit; font-size: 13px; color: #e5f2ff; text-decoration: none; cursor: pointer; }
+    button:hover, a:hover { background: #304a64; }
+    button:focus-visible, a:focus-visible { outline: 2px solid #76e0cc; outline-offset: 4px; }
+    .actions { display: flex; gap: 10px; }
+    #history { width: 100%; height: 110px; display: block; margin-top: 16px; }
+    .audio-layout { display: grid; grid-template-columns: 1fr 1.15fr; gap: 28px; margin-top: 18px; }
+    .meter-heading, .meter-values, .axis { display: flex; justify-content: space-between; gap: 12px; }
+    .meter-heading { color: #a2b3c9; font-size: 11px; margin-bottom: 14px; }
+    .meter-values { align-items: baseline; margin-bottom: 5px; font-size: 12px; }
+    .meter-values strong { color: #76e0cc; }
+    .meter-values .right { color: #9caeff; }
+    .reading { font-variant-numeric: tabular-nums; color: #c6d4e5; }
+    .meter-track { width: 100%; height: 16px; display: block; margin-bottom: 12px; border-radius: 3px; background: #0c1623; }
+    .axis { color: #91a6c1; font-size: 10px; }
+    .clip { font-size: 11px; color: #a2b3c9; border: 1px solid #3b4c62; border-radius: 4px; padding: 5px 8px; }
+    .clip.active { color: #ffb9ad; border-color: #c66b5d; background: #492d30; }
+    .audio-chart { position: relative; padding-left: 32px; }
+    .db-axis { position: absolute; top: 20px; height: 108px; left: 0; color: #91a6c1; font-size: 10px; }
+    .db-axis span { position: absolute; transform: translateY(-50%); }
+    .db-axis span:nth-child(1) { top: 0; } .db-axis span:nth-child(2) { top: 33.333%; }
+    .db-axis span:nth-child(3) { top: 66.667%; } .db-axis span:nth-child(4) { top: 100%; }
+    #level-history { width: 100%; height: 108px; display: block; margin-top: 6px; }
+    .legend { display: flex; gap: 14px; align-items: center; font-size: 11px; line-height: 14px; color: #a2b3c9; }
+    #level-scale { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .legend .left, .legend .right { white-space: nowrap; flex-shrink: 0; }
+    .legend .left { color: #76e0cc; } .legend .right { color: #9caeff; }
+    .audio-note { margin-top: 12px; font-size: 11px; }
+    details.panel { padding: 14px 18px; }
+    summary { cursor: pointer; color: #c8d6e8; font-size: 13px; }
+    summary:focus-visible { outline: 2px solid #76e0cc; outline-offset: 4px; }
+    .buffer-scale { display: block; margin-top: 14px; }
+    footer { display: flex; justify-content: space-between; gap: 18px; flex-wrap: wrap; margin-top: 20px; font-size: 12px; color: #8fa3bd; }
+    .notice { padding: 11px 0 0; min-height: 31px; color: #a2b3c9; font-size: 13px; }
+    @media (max-width: 760px) { main { padding: 20px 16px; } .metrics { grid-template-columns: repeat(2, 1fr); } .counters { grid-template-columns: repeat(3, 1fr); } .panel { padding: 16px; } .audio-layout { grid-template-columns: 1fr; gap: 20px; } }
+    @media (max-width: 400px) { .metric { padding: 16px 12px; } .metric .value { font-size: 24px; } .counters { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; } }
+    @media (prefers-reduced-motion: no-preference) { button, a { transition: background .15s; } }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="12" fill="#70E2C4"/><path d="M14 27V37 M23 19V45 M32 12V52 M41 22V42 M50 27V37" fill="none" stroke="#102331" stroke-width="5" stroke-linecap="round"/></svg>
+      <div><h1>NKS AudioLink</h1><p>Server monitor</p></div>
+    </div>
+    <div class="actions"><button id="pause" type="button" aria-pressed="false">Pause updates</button><a href="api/stats" target="_blank" rel="noopener">JSON API ↗</a></div>
+  </header>
+  <section class="panel" aria-labelledby="server-name">
+    <div class="row"><div><div class="eyebrow">Receiver</div><h2 id="server-name">Connecting to server…</h2><p id="format">Waiting for a status response.</p></div><span id="state" class="pill" role="status">Connecting</span></div>
+    <div class="metrics">
+      <div class="metric"><span class="label">Server buffer</span><strong class="value"><span id="buffer">—</span> <span class="unit">ms</span></strong></div>
+      <div class="metric"><span class="label">Output queue</span><strong class="value"><span id="sink">—</span> <span class="unit">ms</span></strong></div>
+      <div class="metric"><span class="label">Clock correction</span><strong class="value"><span id="drift">—</span> <span class="unit">ppm</span></strong></div>
+      <div class="metric"><span class="label">Session duration</span><strong class="value" id="duration">—</strong></div>
+    </div>
+    <div class="notice" id="notice" role="status">Updates every second.</div>
+  </section>
+  <section class="panel" aria-labelledby="audio-title">
+    <div class="row"><div><h2 id="audio-title">Output signal</h2><p class="small">Stereo levels sent to the audio device</p></div><span id="clip" class="clip">No live sample</span></div>
+    <div class="audio-layout">
+      <div>
+        <div class="meter-heading"><span>RMS · 300 ms</span><span>RMS / peak · dBFS</span></div>
+        <div class="meter-values"><strong>LEFT</strong><span id="left-reading" class="reading">— / —</span></div>
+        <svg id="left-meter" class="meter-track" viewBox="0 0 1000 16" preserveAspectRatio="none" role="meter" aria-label="Left output RMS" aria-valuemin="-90" aria-valuemax="0" aria-valuenow="-90">
+          <defs><linearGradient id="level-colors"><stop offset="0" stop-color="#399e91"/><stop offset="75%" stop-color="#76e0cc"/><stop offset="90%" stop-color="#edcc6a"/><stop offset="100%" stop-color="#ef8b79"/></linearGradient></defs>
+          <rect width="1000" height="16" fill="url(#level-colors)"/>
+          <rect id="left-cover" x="0" width="1000" height="16" fill="#0c1623"/>
+          <path id="left-peak" d="" stroke="#f1f6ff" stroke-width="2" vector-effect="non-scaling-stroke"/>
+        </svg>
+        <div class="meter-values"><strong class="right">RIGHT</strong><span id="right-reading" class="reading">— / —</span></div>
+        <svg id="right-meter" class="meter-track" viewBox="0 0 1000 16" preserveAspectRatio="none" role="meter" aria-label="Right output RMS" aria-valuemin="-90" aria-valuemax="0" aria-valuenow="-90">
+          <rect width="1000" height="16" fill="url(#level-colors)"/>
+          <rect id="right-cover" x="0" width="1000" height="16" fill="#0c1623"/>
+          <path id="right-peak" d="" stroke="#f1f6ff" stroke-width="2" vector-effect="non-scaling-stroke"/>
+        </svg>
+        <div class="axis"><span>−90</span><span>−60</span><span>−30</span><span>0 dBFS</span></div>
+      </div>
+      <div class="audio-chart">
+        <div class="legend"><span class="left">● Left</span><span class="right">● Right</span><span id="level-scale">RMS history · waiting for audio</span></div>
+        <div class="db-axis" aria-hidden="true"><span>0</span><span>−30</span><span>−60</span><span>−90</span></div>
+        <svg id="level-history" viewBox="0 0 1000 108" preserveAspectRatio="none" role="img" aria-label="Left and right output RMS history, from minus 90 to zero dBFS">
+          <path d="M0 0H1000 M0 36H1000 M0 72H1000 M0 108H1000" stroke="#2b3d53" stroke-dasharray="3 6" fill="none"/>
+          <path id="left-level-line" stroke="#76e0cc" stroke-width="2" fill="none" vector-effect="non-scaling-stroke"/>
+          <path id="right-level-line" stroke="#9caeff" stroke-width="2" fill="none" vector-effect="non-scaling-stroke"/>
+          <circle id="left-level-dot" cx="997" cy="108" r="0" fill="#76e0cc"/>
+          <circle id="right-level-dot" cx="997" cy="108" r="0" fill="#9caeff"/>
+        </svg>
+        <div class="axis"><span>Older samples</span><span>Latest</span></div>
+      </div>
+    </div>
+    <p class="small audio-note" id="audio-note">One sample per second · peak hold 1 s · history stays in this browser.</p>
+  </section>
+  <section class="panel" aria-labelledby="quality-title">
+    <div class="row"><h2 id="quality-title">Session counters</h2><span class="small">Reset when a new session starts</span></div>
+    <div class="counters">
+      <div><span class="label">Lost frames</span><strong class="value" id="lost">—</strong></div>
+      <div><span class="label">Late frames</span><strong class="value" id="late">—</strong></div>
+      <div><span class="label">Underruns</span><strong class="value" id="underruns">—</strong></div>
+      <div><span class="label">Overruns</span><strong class="value" id="overruns">—</strong></div>
+      <div><span class="label">Duplicates</span><strong class="value" id="duplicates">—</strong></div>
+    </div>
+  </section>
+  <details class="panel">
+    <summary id="buffer-title">Buffer history &amp; latency details</summary>
+    <span class="small buffer-scale" id="scale">Last 60 samples · waiting for audio</span>
+    <svg id="history" viewBox="0 0 1000 130" preserveAspectRatio="none" role="img" aria-label="Server buffer occupancy over the last 60 samples">
+      <path d="M0 20H1000 M0 65H1000 M0 110H1000" stroke="#2b3d53" stroke-dasharray="3 6" fill="none"/>
+      <path id="line" stroke="#76e0cc" stroke-width="2.5" fill="none" vector-effect="non-scaling-stroke"/>
+    </svg>
+    <p class="small">Buffer occupancy and output queue are server measurements. They do not measure end-to-end audio latency.</p>
+  </details>
+  <footer><span id="uptime">Server uptime —</span><span id="updated">No data received</span><span id="version">NKS AudioLink · Read-only monitor</span></footer>
+</main>
+<script>
+  const el = id => document.getElementById(id);
+  const text = (id, value) => { el(id).textContent = value; };
+  let paused = false, timer, sessionId = null, sessionAge = null, serverUptime = null, history = [], levelHistory = [], requestGeneration = 0, activeRequest = null;
+  const duration = seconds => { const n = Math.max(0, Math.floor(seconds)); return `${Math.floor(n / 3600)}:${String(Math.floor(n / 60) % 60).padStart(2, '0')}:${String(n % 60).padStart(2, '0')}`; };
+  function clearMetrics() { ['buffer','sink','drift','duration','lost','late','underruns','overruns','duplicates'].forEach(id => text(id, '—')); }
+  function clearHistory() { history = []; el('line').setAttribute('d', ''); text('scale', 'Last 60 samples · waiting for audio'); }
+  const db = value => Number.isFinite(value) ? Math.max(-90, Math.min(0, value)) : null;
+  const dbText = value => value <= -90 ? '−∞' : value.toFixed(1);
+  const levelX = value => (value + 90) * 1000 / 90;
+  function clearLevels() {
+    levelHistory = [];
+    for (const side of ['left', 'right']) {
+      text(`${side}-reading`, '— / —');
+      el(`${side}-cover`).setAttribute('x', '0');
+      el(`${side}-peak`).setAttribute('d', '');
+      el(`${side}-level-line`).setAttribute('d', '');
+      el(`${side}-level-dot`).setAttribute('r', '0');
+      el(`${side}-meter`).setAttribute('aria-valuenow', '-90');
+      el(`${side}-meter`).setAttribute('aria-valuetext', 'No live sample');
+    }
+    text('clip', 'No live sample'); el('clip').className = 'clip';
+    text('level-scale', 'RMS history · waiting for audio');
+  }
+  function showLevels(levels) {
+    const values = levels && [levels.leftRmsDbfs, levels.rightRmsDbfs, levels.leftPeakDbfs, levels.rightPeakDbfs].map(db);
+    if (!values || values.some(value => value === null)) { clearLevels(); return; }
+    const [left, right, leftPeak, rightPeak] = values;
+    for (const [side, rms, peak] of [['left', left, leftPeak], ['right', right, rightPeak]]) {
+      text(`${side}-reading`, `${dbText(rms)} / ${dbText(peak)}`);
+      el(`${side}-cover`).setAttribute('x', levelX(rms));
+      el(`${side}-peak`).setAttribute('d', peak <= -90 ? '' : `M${Math.min(999, levelX(peak))} 0V16`);
+      el(`${side}-meter`).setAttribute('aria-valuenow', rms);
+      el(`${side}-meter`).setAttribute('aria-valuetext', `RMS ${dbText(rms)} dBFS, peak ${dbText(peak)} dBFS`);
+      el(`${side}-level-dot`).setAttribute('cy', Math.max(2, Math.min(106, -rms * 108 / 90)));
+      el(`${side}-level-dot`).setAttribute('r', '2');
+    }
+    text('clip', levels.clipping === true ? 'CLIPPING' : 'No clipping');
+    el('clip').className = levels.clipping === true ? 'clip active' : 'clip';
+    levelHistory.push([left, right]); if (levelHistory.length > 60) levelHistory.shift();
+    for (const [side, channel] of [['left', 0], ['right', 1]]) {
+      el(`${side}-level-line`).setAttribute('d', levelHistory.map((v, i) => `${i ? 'L' : 'M'}${(60 - levelHistory.length + i) * 1000 / 59},${-v[channel] * 108 / 90}`).join(' '));
+    }
+    text('level-scale', `${levelHistory.length} / 60 samples · dBFS`);
+  }
+  async function update() {
+    if (paused) return;
+    const generation = ++requestGeneration;
+    const abort = new AbortController();
+    activeRequest = abort;
+    const timeout = setTimeout(() => abort.abort(), 3000);
+    try {
+      const response = await fetch('api/stats', { cache: 'no-store', signal: abort.signal });
+      if (!response.ok) throw new Error(response.status === 403 ? 'Access denied. Check the server\'s allowed client networks.' : `Server returned HTTP ${response.status}. Retrying automatically…`);
+      const data = await response.json();
+      if (paused || generation !== requestGeneration) return;
+      text('server-name', data.name);
+      text('format', `${data.sampleRate / 1000} kHz · ${data.bitsPerSample}-bit · ${data.channels === 2 ? 'Stereo' : data.channels + ' channels'} · UDP ${data.udpPort}`);
+      text('uptime', `Server uptime ${duration(data.uptimeSeconds)}`);
+      text('version', `NKS AudioLink ${data.version} · Read-only monitor`);
+      text('updated', `Updated ${new Date().toLocaleTimeString()}`);
+      const s = data.session;
+      if (sessionId !== (s?.id ?? null) ||
+          (serverUptime !== null && data.uptimeSeconds < serverUptime) ||
+          (s && sessionAge !== null && s.connectedSeconds < sessionAge)) { clearHistory(); clearLevels(); }
+      sessionId = s?.id ?? null; sessionAge = s?.connectedSeconds ?? null; serverUptime = data.uptimeSeconds;
+      text('state', s ? 'Streaming' : 'Ready');
+      el('state').className = s ? 'pill live' : 'pill';
+      if (s) {
+        showLevels(s.levels);
+        text('buffer', s.bufferMs); text('sink', s.sinkDelayMs); text('drift', s.ratioPpm); text('duration', duration(s.connectedSeconds));
+        ['lost','late','underruns','overruns','duplicates'].forEach(id => text(id, s[id].toLocaleString()));
+        text('notice', `Session ${s.id} · Last packet ${Math.round(s.lastPacketAgeMs)} ms ago`);
+        history.push(s.bufferMs); if (history.length > 60) history.shift();
+        const max = Math.max(50, ...history);
+        el('line').setAttribute('d', history.map((v, i) => `${i ? 'L' : 'M'}${i * 1000 / 59},${110 - v * 90 / max}`).join(' '));
+        text('scale', `${history.length} / 60 samples · 0–${max} ms`);
+      } else { clearMetrics(); clearHistory(); clearLevels(); text('notice', 'Waiting for an audio client. The server is ready.'); }
+    } catch (error) {
+      if (!paused && generation === requestGeneration) { clearMetrics(); clearHistory(); clearLevels(); text('state', 'Unavailable'); el('state').className = 'pill error'; text('notice', error.message.startsWith('Access denied.') || error.message.startsWith('Server returned HTTP ') ? error.message : 'Cannot reach the server. Retrying automatically…'); text('updated', 'Live data unavailable'); }
+    } finally {
+      clearTimeout(timeout);
+      if (generation === requestGeneration) {
+        activeRequest = null;
+        if (!paused) timer = setTimeout(update, 1000);
+      }
+    }
+  }
+  el('pause').addEventListener('click', () => {
+    paused = !paused; clearTimeout(timer);
+    ++requestGeneration;
+    activeRequest?.abort(); activeRequest = null;
+    el('pause').setAttribute('aria-pressed', String(paused)); text('pause', paused ? 'Resume updates' : 'Pause updates');
+    if (paused) { clearLevels(); text('state', 'Paused'); el('state').className = 'pill'; text('notice', 'Updates paused. Session counters show the last received sample.'); }
+    else { text('state', 'Connecting'); el('state').className = 'pill'; text('notice', 'Refreshing server status…'); update(); }
+  });
+  update();
+</script>
+</body>
+</html>

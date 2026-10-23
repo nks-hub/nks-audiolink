@@ -16,3 +16,5 @@ appsettings.Local.json
 server.json
 settings.json
 TestResults/
+**/__pycache__/
+*.pyc

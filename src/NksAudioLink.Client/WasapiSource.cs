@@ -63,6 +63,11 @@ public sealed class WasapiSource : IAudioSource
     {
         _stopping = false;
         _recorder.StartRecording();
+        // NAudio 3.1's capture thread changes Starting to Capturing after its
+        // native Start call. A quick rejection/cancellation must not call Stop
+        // before that transition: Capturing would overwrite Stopping and make
+        // Dispose wait forever for a capture thread that never received Stop.
+        SpinWait.SpinUntil(() => _recorder.CaptureState != CaptureState.Starting);
     }
     public void Stop()
     {

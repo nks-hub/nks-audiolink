@@ -10,6 +10,9 @@ namespace NksAudioLink.Client;
 
 public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, IAudioSource>? sourceFactory = null)
 {
+    private readonly Func<IClientDatagramSocket> _socketFactory = () => new ClientDatagramSocket();
+    internal AudioStreamClient(ClientConfig config, Func<string?, bool, IAudioSource> sourceFactory,
+        Func<IClientDatagramSocket> socketFactory) : this(config, sourceFactory) => _socketFactory = socketFactory;
     private double _gain = config.Gain;
     public double Gain
     {
@@ -24,10 +27,21 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
     public event Action<string>? StateChanged;
     private double _captureLatencyMs = 10;
     public double CaptureLatencyMs => Volatile.Read(ref _captureLatencyMs);
+    private readonly AudioLevelMeter _levelMeter = new();
+    /// <summary>Levels of the post-gain PCM payload submitted to UDP, not receiver output.</summary>
+    public AudioLevelSnapshot Levels => _levelMeter.GetSnapshot();
 
     private sealed class CaptureDeviceException(Exception inner) : Exception("The audio device stopped providing data. Check its connection.", inner);
+    private sealed class TransportRestartException(SocketException inner) : IOException("The network socket was invalidated. Reconnecting.", inner);
 
     public async Task RunAsync(string? deviceId, bool loopback, CancellationToken cancellationToken, bool takeover = false)
+    {
+        _levelMeter.Reset();
+        try { await RunCoreAsync(deviceId, loopback, cancellationToken, takeover); }
+        finally { _levelMeter.Reset(); }
+    }
+
+    private async Task RunCoreAsync(string? deviceId, bool loopback, CancellationToken cancellationToken, bool takeover)
     {
         bool recoveringCapture = false;
         while (!cancellationToken.IsCancellationRequested)
@@ -38,7 +52,9 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
                 await RunSessionAsync(deviceId, loopback, cancellationToken, takeover);
                 return;
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { return; }
             catch (CaptureDeviceException) { recoveringCapture = true; }
+            catch (TransportRestartException) { retryState = "Waiting for server"; }
             catch (COMException error) when ((uint)error.HResult is 0x88890004 or 0x88890010 or 0x88890026 or 0x80070490 or 0x800706BA)
             {
                 recoveringCapture = true;
@@ -64,8 +80,9 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
         using var runStop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         CancellationToken runToken = runStop.Token;
         IPAddress address = (await Dns.GetHostAddressesAsync(config.Server, cancellationToken))
-            .First(ip => ip.AddressFamily == AddressFamily.InterNetwork);
-        using var udp = new UdpClient(AddressFamily.InterNetwork);
+            .FirstOrDefault(ip => ip.AddressFamily == AddressFamily.InterNetwork)
+            ?? throw new NotSupportedException($"The server '{config.Server}' has no IPv4 address. Use an IPv4 address or a hostname with an IPv4 record.");
+        using IClientDatagramSocket udp = _socketFactory();
         udp.Connect(new IPEndPoint(address, config.Port));
         using var timerResolution = new WindowsTimerResolution();
         using IAudioSource source = sourceFactory is null
@@ -76,7 +93,9 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
         void CaptureFailed(Exception error)
         {
             Interlocked.CompareExchange(ref captureFailure, error, null);
-            runStop.Cancel();
+            // An audio callback may already have copied the delegate when we unsubscribe.
+            try { runStop.Cancel(); }
+            catch (ObjectDisposedException) { }
         }
         source.CaptureError += CaptureFailed;
         byte[] key = string.IsNullOrEmpty(config.PskBase64) ? [] : Convert.FromBase64String(config.PskBase64);
@@ -86,6 +105,7 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
         byte[] packet = new byte[Protocol.MaxDatagramSize];
         byte[] body = new byte[AudioMessage.PrefixSize + Protocol.PcmBytesPerFrame];
         int accepted = 0;
+        object connectionGate = new();
         int takeoverPending = takeover ? 1 : 0;
         long lastStatsTick = 0;
         double lastRttMs = 0;
@@ -94,6 +114,8 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
         {
             int length = Protocol.Write(packet, new PacketHeader(type, flags, session, ++sequence), body.AsSpan(0, size), key);
             try { await udp.SendAsync(packet.AsMemory(0, length)); }
+            catch (SocketException error) when (error.SocketErrorCode == SocketError.InvalidArgument)
+            { throw new TransportRestartException(error); }
             catch (SocketException error) when (IsTransient(error)) { ConnectionInterrupted(); }
         }
 
@@ -107,12 +129,19 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
         {
             int length = Protocol.Write(packet, new PacketHeader(type, flags, session, ++sequence), body.AsSpan(0, size), key);
             try { udp.Send(packet, length); }
+            // Windows can invalidate a connected UDP socket across S3 resume.
+            // Recreate it in the outer session loop; retrying this socket fails.
+            catch (SocketException error) when (error.SocketErrorCode == SocketError.InvalidArgument)
+            { throw new TransportRestartException(error); }
             catch (SocketException error) when (IsTransient(error)) { ConnectionInterrupted(); }
         }
 
         void ConnectionInterrupted()
         {
-            if (Interlocked.Exchange(ref accepted, 0) == 1) StateChanged?.Invoke("Waiting for server");
+            int previous;
+            lock (connectionGate) previous = Interlocked.Exchange(ref accepted, 0);
+            _levelMeter.Reset();
+            if (previous == 1) StateChanged?.Invoke("Waiting for server");
         }
 
         using var receiveStop = CancellationTokenSource.CreateLinkedTokenSource(runToken);
@@ -125,6 +154,8 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
                 {
                     UdpReceiveResult response;
                     try { response = await udp.ReceiveAsync(receiveStop.Token); }
+                    catch (SocketException error) when (error.SocketErrorCode == SocketError.InvalidArgument)
+                    { throw new TransportRestartException(error); }
                     catch (SocketException error) when (IsTransient(error))
                     {
                         ConnectionInterrupted();
@@ -135,10 +166,15 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
                     if (header.Type == PacketType.Stats && StatsMessage.TryRead(responseBody, out var stats))
                     {
                         int next = stats.Accepted ? 1 : 0;
-                        int previous = Interlocked.Exchange(ref accepted, next);
-                        if (next == 1 && previous == 0) source.Queue.Clear();
+                        int previous;
+                        lock (connectionGate)
+                        {
+                            previous = accepted;
+                            if (next == 1 && previous == 0) source.Queue.Clear();
+                            lastStatsTick = Stopwatch.GetTimestamp();
+                            Volatile.Write(ref accepted, next);
+                        }
                         if (next == 1) Interlocked.Exchange(ref takeoverPending, 0);
-                        Volatile.Write(ref lastStatsTick, Stopwatch.GetTimestamp());
                         StatsReceived?.Invoke(stats, lastRttMs);
                         if (previous != next) StateChanged?.Invoke(stats.Accepted ? "Connected" : "Rejected");
                     }
@@ -165,17 +201,17 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
 
         try
         {
+            StateChanged?.Invoke("Connecting");
             await SendHelloAsync();
             source.Start();
             Volatile.Write(ref _captureLatencyMs, source.CaptureLatencyMs);
-            StateChanged?.Invoke("Connecting");
             var senderDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var sender = new Thread(() =>
             {
                 try
                 {
                     long startTick = Stopwatch.GetTimestamp();
-                    int ticks = 0;
+                    long ticks = 0;
                     while (!runToken.IsCancellationRequested)
                     {
                         // After suspend or a long scheduler pause, resume from now instead
@@ -201,11 +237,13 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
                             BinaryPrimitives.WriteUInt64LittleEndian(body, (ulong)Stopwatch.GetTimestamp());
                             SendSync(PacketType.Ping, PacketFlags.None, 8);
                         }
-                        long last = Volatile.Read(ref lastStatsTick);
-                        if (last == 0 || (Stopwatch.GetTimestamp() - last) * 1000.0 / Stopwatch.Frequency > 3000)
+                        bool timedOut = false;
+                        lock (connectionGate)
                         {
-                            if (Interlocked.Exchange(ref accepted, 0) == 1) StateChanged?.Invoke("Waiting for server");
+                            if (accepted == 1 && (lastStatsTick == 0 || Stopwatch.GetElapsedTime(lastStatsTick) > TimeSpan.FromSeconds(3)))
+                                timedOut = Interlocked.Exchange(ref accepted, 0) == 1;
                         }
+                        if (timedOut) StateChanged?.Invoke("Waiting for server");
                         if (Volatile.Read(ref accepted) == 1)
                         {
                             bool hasAudio = source.Queue.TryReadFrame(body.AsSpan(AudioMessage.PrefixSize, Protocol.PcmBytesPerFrame));
@@ -220,6 +258,8 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
                             }
                             int size = AudioMessage.Write(body, sampleIndex, Protocol.SamplesPerFrame,
                                 hasAudio ? body.AsSpan(AudioMessage.PrefixSize, Protocol.PcmBytesPerFrame) : [], !hasAudio);
+                            if (hasAudio) _levelMeter.ProcessPcm16(body.AsSpan(AudioMessage.PrefixSize, Protocol.PcmBytesPerFrame));
+                            else _levelMeter.ProcessSilence(Protocol.SamplesPerFrame);
                             SendSync(PacketType.Audio, hasAudio ? PacketFlags.None : PacketFlags.Silent, size);
                             sampleIndex += Protocol.SamplesPerFrame;
                         }
@@ -249,6 +289,7 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
         finally
         {
+            _levelMeter.Reset();
             source.CaptureError -= CaptureFailed;
             try { source.Stop(); }
             finally
@@ -258,6 +299,7 @@ public sealed class AudioStreamClient(ClientConfig config, Func<string?, bool, I
                 finally
                 {
                     try { await SendAsync(PacketType.Bye, PacketFlags.None, 0); } catch (SocketException) { }
+                    catch (TransportRestartException) { }
                     StateChanged?.Invoke("Disconnected");
                 }
             }

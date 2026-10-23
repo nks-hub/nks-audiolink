@@ -7,6 +7,8 @@ namespace NksAudioLink.Core;
 public sealed record ServerConfig
 {
     public int Port { get; init; } = 7355;
+    public int HttpPort { get; init; }
+    public string HttpBindAddress { get; init; } = "127.0.0.1";
     public string Name { get; init; } = "NKS AudioLink";
     public string Sink { get; init; } = "null";
     public string[] AllowCidrs { get; init; } = ["127.0.0.0/8", "::1/128"];
@@ -25,6 +27,11 @@ public sealed record ServerConfig
             IdleReleaseSec is < 1 or > 300 || TargetLatencyMs is < 10 or > 200 || TargetLatencyMs % 5 != 0)
             throw new InvalidDataException("Invalid server settings. Check the port, name, output, allowed addresses, and target buffer.");
         foreach (string cidr in AllowCidrs) _ = CidrRange.Parse(cidr);
+        if (HttpPort is < 0 or > 65535 ||
+            !IPAddress.TryParse(HttpBindAddress, out var httpAddress) ||
+            httpAddress.AddressFamily != AddressFamily.InterNetwork ||
+            httpAddress.Equals(IPAddress.Any) || httpAddress.Equals(IPAddress.Broadcast))
+            throw new InvalidDataException("Invalid HTTP settings. Use port 0 to disable the dashboard, or a port from 1 to 65535 and an explicit IPv4 bind address.");
         _ = GetPsk();
     }
 
@@ -67,6 +74,8 @@ public readonly record struct CidrRange(IPAddress Network, int PrefixBits)
 {
     public static CidrRange Parse(string text)
     {
+        if (string.IsNullOrWhiteSpace(text))
+            throw new InvalidDataException("An allowed CIDR range is empty. Set an address and prefix length.");
         string[] parts = text.Split('/');
         if (parts.Length != 2 || !IPAddress.TryParse(parts[0], out var address) ||
             !int.TryParse(parts[1], out int bits) || bits < 0 || bits > address.GetAddressBytes().Length * 8)

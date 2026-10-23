@@ -4,6 +4,6 @@
              xmlns:local="clr-namespace:NksAudioLink.App"
              StartupUri="MainWindow.xaml">
     <Application.Resources>
-
+        <ResourceDictionary Source="Assets/Theme.xaml"/>
     </Application.Resources>
 </Application>

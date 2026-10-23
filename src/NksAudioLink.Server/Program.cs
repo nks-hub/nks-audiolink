@@ -9,6 +9,8 @@ try
         Console.WriteLine("  NksAudioLink.Server run [--config FILE] [--sink null|wav:FILE|alsa|alsa:DEVICE] [--port PORT]");
         Console.WriteLine("    Receive UDP audio. FILE is a JSON config path for --config or a WAV output path for wav:FILE.");
         Console.WriteLine("    DEVICE is an ALSA device name, such as default. PORT is the UDP port number.");
+        Console.WriteLine("  Optional status dashboard: --http-port PORT [--http-bind IPv4]");
+        Console.WriteLine("    HTTP is disabled by default (port 0); binds to 127.0.0.1 and uses allowCidrs.");
         Console.WriteLine("  NksAudioLink.Server devices");
         Console.WriteLine("    List available ALSA sound cards.");
         return;
@@ -19,19 +21,7 @@ try
         return;
     }
     if (args[0] != "run") throw new ArgumentException($"Unknown command '{args[0]}'. Use run or devices.");
-    var config = new ServerConfig();
-    for (int i = 1; i < args.Length; i++)
-    {
-        if (i + 1 >= args.Length) throw new ArgumentException($"Option '{args[i]}' needs a value.");
-        switch (args[i++])
-        {
-            case "--config": config = ServerConfig.Load(args[i]); break;
-            case "--sink": config = config with { Sink = args[i] }; break;
-            case "--port": config = config with { Port = int.Parse(args[i]) }; break;
-            default: throw new ArgumentException($"Unknown option '{args[i - 1]}'. Run --help to see the options.");
-        }
-    }
-    config.Validate();
+    var config = ServerCommandLine.Parse(args);
     using var stop = new CancellationTokenSource();
     Console.CancelKeyPress += (_, e) => { e.Cancel = true; stop.Cancel(); };
     await new AudioServer(config).RunAsync(stop.Token);

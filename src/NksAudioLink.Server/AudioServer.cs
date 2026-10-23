@@ -13,6 +13,7 @@ public sealed class AudioServer
 
     public AudioServer(ServerConfig config, Func<string, IAudioSink>? sinkFactory = null)
     {
+        config.Validate();
         this.config = config;
         _sinkFactory = sinkFactory ?? CreateSink;
         _key = config.GetPsk();
@@ -24,7 +25,9 @@ public sealed class AudioServer
         public uint Id { get; } = id;
         public PlayoutEngine Engine { get; } = engine;
         public IAudioSink Sink { get; } = sink;
+        public AudioLevelMeter Levels { get; } = new();
         public long LastPacketTick { get; set; } = Stopwatch.GetTimestamp();
+        public long StartedTick { get; } = Stopwatch.GetTimestamp();
         public ulong EchoTicks { get; set; }
         public uint Sequence { get; set; }
         public object SinkGate { get; } = new();
@@ -41,10 +44,34 @@ public sealed class AudioServer
     private long _idleReleaseTick;
     private readonly byte[]? _key;
     private readonly CidrRange[] _allow;
+    private long _startedTick = Stopwatch.GetTimestamp();
+
+    public ServerStatus GetStatus()
+    {
+        lock (_gate)
+        {
+            SessionStatus? session = null;
+            if (_session is { } active)
+            {
+                var stats = active.Engine.GetStats();
+                session = new SessionStatus(active.Id,
+                    (long)Stopwatch.GetElapsedTime(active.StartedTick).TotalSeconds,
+                    Math.Round(Stopwatch.GetElapsedTime(active.LastPacketTick).TotalMilliseconds, 1),
+                    stats.BufferMs, Volatile.Read(ref active.SinkDelayMs), stats.RatioPpm,
+                    stats.Lost, stats.Late, stats.Underruns, stats.Overruns, stats.Duplicates,
+                    active.Levels.GetSnapshot());
+            }
+            return new ServerStatus(config.Name,
+                typeof(AudioServer).Assembly.GetName().Version?.ToString(3) ?? "unknown",
+                (long)Stopwatch.GetElapsedTime(_startedTick).TotalSeconds, config.Port,
+                Protocol.SampleRate, Protocol.Channels, 16, session);
+        }
+    }
 
     public async Task RunAsync(CancellationToken cancellationToken)
     {
         config.Validate();
+        _startedTick = Stopwatch.GetTimestamp();
         using var timerResolution = new TimerResolution();
         using var udp = new UdpClient(new IPEndPoint(IPAddress.Any, config.Port));
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -53,14 +80,15 @@ public sealed class AudioServer
             TaskCreationOptions.LongRunning, TaskScheduler.Default);
         Task receive = ReceiveLoopAsync(udp, stop.Token);
         Task stats = StatsLoopAsync(udp, stop.Token);
+        Task http = new HttpStatusServer(config, GetStatus).RunAsync(stop.Token);
         try
         {
-            await Task.WhenAny(playout, receive, stats);
+            await Task.WhenAny(playout, receive, stats, http);
         }
         finally
         {
             stop.Cancel();
-            try { await Task.WhenAll(playout, receive, stats); }
+            try { await Task.WhenAll(playout, receive, stats, http); }
             finally
             {
                 lock (_gate)
@@ -206,6 +234,7 @@ public sealed class AudioServer
                         if (!active.Closed)
                         {
                             active.Engine.Read(samples);
+                            active.Levels.Process(samples);
                             long beforeWrite = Stopwatch.GetTimestamp();
                             active.Sink.Write(samples);
                             active.MaxSinkWriteMs = Math.Max(active.MaxSinkWriteMs,

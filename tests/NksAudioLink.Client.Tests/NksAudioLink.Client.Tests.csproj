@@ -18,5 +18,6 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\NksAudioLink.Client\NksAudioLink.Client.csproj" />
     <ProjectReference Include="..\..\src\NksAudioLink.Core\NksAudioLink.Core.csproj" />
+    <ProjectReference Include="..\..\src\NksAudioLink.Cli\NksAudioLink.Cli.csproj" />
   </ItemGroup>
 </Project>

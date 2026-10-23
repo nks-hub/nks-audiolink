@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
@@ -9,6 +10,203 @@ namespace NksAudioLink.Client.Tests;
 
 public sealed class AudioStreamClientTests
 {
+    [Fact]
+    public async Task SentLevelsFollowPostGainWirePcmClipThenDecayOnSilentFramesAndResetOnStop()
+    {
+        using var server = new PacketServer();
+        byte[] pcm = new byte[Protocol.PcmBytesPerFrame * 3];
+        for (int index = 0; index < pcm.Length; index += 4)
+        {
+            BinaryPrimitives.WriteInt16LittleEndian(pcm.AsSpan(index), 8192);
+            BinaryPrimitives.WriteInt16LittleEndian(pcm.AsSpan(index + 2), 4096);
+        }
+        int emit = 1;
+        FakeSource? source = null;
+        source = new FakeSource
+        {
+            OnQueueAccess = () =>
+            {
+                if (Thread.CurrentThread.Name == "NKS AudioLink sender" && Volatile.Read(ref emit) == 1)
+                    source!.Write(pcm);
+            }
+        };
+        var client = new AudioStreamClient(Config(server.Port) with { Gain = 2 }, (_, _) => source);
+        using var stop = new CancellationTokenSource();
+        Task running = client.RunAsync(null, true, stop.Token);
+        try
+        {
+            await Eventually(() => client.Levels.LeftRmsDbfs > -6.03 && client.Levels.RightRmsDbfs > -12.05, TimeSpan.FromSeconds(3));
+            var level = client.Levels;
+            Assert.InRange(level.LeftRmsDbfs, -6.1, -6.0);
+            Assert.InRange(level.RightRmsDbfs, -12.1, -12.0);
+            Assert.InRange(level.LeftPeakDbfs, -6.1, -6.0);
+            Assert.InRange(level.RightPeakDbfs, -12.1, -12.0);
+            Assert.False(level.Clipping);
+            Assert.Contains(server.Audio, packet => packet.LeftSample == 16384 && packet.RightSample == 8192);
+
+            client.Gain = 4;
+            await Eventually(() => client.Levels.Clipping && server.Audio.Any(packet => packet.LeftSample == short.MaxValue), TimeSpan.FromSeconds(3));
+            Assert.InRange(client.Levels.LeftPeakDbfs, -0.01, 0);
+
+            Volatile.Write(ref emit, 0);
+            source.Queue.Clear();
+            await Eventually(() => client.Levels.LeftRmsDbfs <= -90 && !client.Levels.Clipping && client.Levels.LeftPeakDbfs < -0.1, TimeSpan.FromSeconds(3));
+            Assert.True(server.Audio.Last().Silent);
+            Assert.True(client.Levels.LeftPeakDbfs < -0.1, "The held peak must decay when silent frames are sent.");
+        }
+        finally { await Stop(stop, running); }
+        Assert.Equal(new AudioLevelSnapshot(-90, -90, -90, -90, false), client.Levels);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task InvalidatedUdpSocketRecreatesTransportAndCapture(bool receiveFailure)
+    {
+        using var server = new PacketServer();
+        var sources = new ConcurrentQueue<FakeSource>();
+        var sockets = new ConcurrentQueue<InvalidatableSocket>();
+        var client = new AudioStreamClient(Config(server.Port), (_, _) =>
+        {
+            var source = new FakeSource();
+            sources.Enqueue(source);
+            return source;
+        }, () =>
+        {
+            var socket = new InvalidatableSocket(receiveFailure);
+            sockets.Enqueue(socket);
+            return socket;
+        });
+        using var stop = new CancellationTokenSource();
+        Task running = client.RunAsync(null, true, stop.Token);
+        try
+        {
+            await Eventually(() => server.Audio.Count >= 3, TimeSpan.FromSeconds(3));
+            uint firstSession = server.Audio.First().Session;
+            sockets.Single().Invalidate();
+            await Eventually(() => server.Audio.Any(packet => packet.Session != firstSession), TimeSpan.FromSeconds(6));
+            Assert.Equal(2, sockets.Count);
+            Assert.True(sockets.First().Disposed);
+            Assert.Equal(2, sources.Count);
+            Assert.True(sources.First().Disposed);
+            Assert.False(sources.Last().Disposed);
+        }
+        finally { await Stop(stop, running); }
+        Assert.All(sources, source => Assert.True(source.Disposed));
+        Assert.All(sockets, socket => Assert.True(socket.Disposed));
+    }
+
+    [Fact]
+    public async Task CaptureArgumentErrorIsNotRetriedAsAnInvalidatedSocket()
+    {
+        using var server = new PacketServer();
+        int created = 0;
+        var client = new AudioStreamClient(Config(server.Port), (_, _) =>
+        {
+            Interlocked.Increment(ref created);
+            return new FakeSource { OnStart = () => throw new ArgumentException("Invalid capture setting.") };
+        });
+        await Assert.ThrowsAsync<ArgumentException>(() => client.RunAsync(null, true, CancellationToken.None));
+        Assert.Equal(1, created);
+    }
+
+    [Fact]
+    public async Task SenderSchedulerPauseRehandshakesBeforeSendingMoreAudio()
+    {
+        using var server = new PacketServer();
+        using var paused = new ManualResetEventSlim();
+        using var resume = new ManualResetEventSlim();
+        int pausePending = 1;
+        var source = new FakeSource
+        {
+            OnQueueAccess = () =>
+            {
+                if (Thread.CurrentThread.Name != "NKS AudioLink sender" || Interlocked.Exchange(ref pausePending, 0) != 1) return;
+                paused.Set();
+                if (!resume.Wait(TimeSpan.FromSeconds(5))) throw new TimeoutException("Test sender was not resumed.");
+            }
+        };
+        var client = new AudioStreamClient(Config(server.Port), (_, _) => source);
+        using var stop = new CancellationTokenSource();
+        Task running = client.RunAsync(null, true, stop.Token);
+        try
+        {
+            await Eventually(() => paused.IsSet, TimeSpan.FromSeconds(3));
+            // Pause just this test sender, not the PC or the receiver. This exceeds
+            // the 50 ms discontinuity threshold but precedes the normal 2 s HELLO.
+            await Task.Delay(200);
+            int before = server.Traffic.Count;
+            uint session = server.Traffic.First(packet => packet.Type == PacketType.Hello).Session;
+            resume.Set();
+            await Eventually(() => server.HelloCount >= 2 && server.Audio.Count >= 3, TimeSpan.FromSeconds(1));
+            var after = server.Traffic.ToArray().Skip(before).ToArray();
+            int hello = Array.FindIndex(after, packet => packet.Type == PacketType.Hello);
+            Assert.InRange(hello, 0, 1);
+            // Only the frame already entered before the pause may precede HELLO.
+            Assert.True(after.Take(hello).Count(packet => packet.Type == PacketType.Audio) <= 1);
+            Assert.All(server.Audio, packet => Assert.Equal(session, packet.Session));
+            Assert.False(source.Disposed);
+        }
+        finally
+        {
+            resume.Set();
+            await Stop(stop, running);
+        }
+    }
+
+    [Fact]
+    public async Task Ipv6OnlyAddressReportsActionableFailureWithoutOpeningCapture()
+    {
+        var client = new AudioStreamClient(new ClientConfig { Server = "::1" },
+            (_, _) => throw new InvalidOperationException("Capture should not be opened."));
+        var error = await Assert.ThrowsAsync<NotSupportedException>(() => client.RunAsync(null, true, CancellationToken.None));
+        Assert.Contains("IPv4", error.Message);
+    }
+
+    [Fact]
+    public async Task CaptureCallbackAlreadyInFlightIsSafeAfterShutdown()
+    {
+        using var server = new PacketServer();
+        var source = new FakeSource();
+        var client = new AudioStreamClient(Config(server.Port), (_, _) => source);
+        using var stop = new CancellationTokenSource();
+        Task running = client.RunAsync(null, true, stop.Token);
+        Action<Exception>? callback = null;
+        try
+        {
+            await Eventually(() => source.Started, TimeSpan.FromSeconds(3));
+            callback = source.CaptureErrorSnapshot();
+        }
+        finally { await Stop(stop, running); }
+        Assert.NotNull(callback);
+        Assert.True(source.Disposed);
+        callback(new IOException("A callback queued before capture stopped."));
+    }
+
+    [Fact]
+    public async Task SlowCaptureStartupDoesNotOverwriteConnectedState()
+    {
+        using var server = new PacketServer();
+        using var connected = new ManualResetEventSlim();
+        var source = new FakeSource { OnStart = () => Assert.True(connected.Wait(TimeSpan.FromSeconds(3))) };
+        var client = new AudioStreamClient(Config(server.Port), (_, _) => source);
+        var states = new ConcurrentQueue<string>();
+        client.StateChanged += state =>
+        {
+            states.Enqueue(state);
+            if (state == "Connected") connected.Set();
+        };
+        using var stop = new CancellationTokenSource();
+        Task running = Task.Run(() => client.RunAsync(null, true, stop.Token));
+        try
+        {
+            await Eventually(() => server.Audio.Count >= 3, TimeSpan.FromSeconds(5));
+            Assert.Equal("Connected", states.Last());
+            Assert.Equal("Connecting", states.First());
+        }
+        finally { await Stop(stop, running); }
+    }
+
     [Fact]
     public async Task EmptyCaptureSendsTwentyContinuousSilentFrames()
     {
@@ -214,18 +412,53 @@ public sealed class AudioStreamClientTests
 
     private sealed class FakeSource : IAudioSource
     {
-        public AudioFrameQueue Queue { get; } = new();
+        private readonly AudioFrameQueue _queue = new();
+        public AudioFrameQueue Queue { get { OnQueueAccess?.Invoke(); return _queue; } }
+        public Action? OnQueueAccess { get; init; }
         public int CaptureLatencyMs => 10;
         public event Action<Exception>? CaptureError;
         public bool Started { get; private set; }
         public bool Disposed { get; private set; }
-        public void Start() => Started = true;
+        public Action? OnStart { get; init; }
+        public void Write(ReadOnlySpan<byte> pcm) => _queue.Write(pcm);
+        public void Start() { Started = true; OnStart?.Invoke(); }
         public void Stop() => Started = false;
         public void Dispose() => Disposed = true;
         public void Fail() => CaptureError?.Invoke(new IOException("Simulated device invalidation."));
+        public Action<Exception>? CaptureErrorSnapshot() => CaptureError;
     }
 
-    private readonly record struct AudioPacket(uint Session, ulong SampleIndex, bool Silent, int PcmLength);
+    private readonly record struct AudioPacket(uint Session, ulong SampleIndex, bool Silent, int PcmLength, short LeftSample, short RightSample);
+
+    private sealed class InvalidatableSocket(bool receiveFailure) : IClientDatagramSocket
+    {
+        private readonly ClientDatagramSocket _inner = new();
+        private readonly CancellationTokenSource _invalidated = new();
+        public bool Disposed { get; private set; }
+        public void Connect(IPEndPoint endpoint) => _inner.Connect(endpoint);
+        public void Invalidate() => _invalidated.Cancel();
+        public void Send(byte[] packet, int length)
+        {
+            if (!receiveFailure && _invalidated.IsCancellationRequested)
+                throw new SocketException((int)SocketError.InvalidArgument);
+            _inner.Send(packet, length);
+        }
+        public ValueTask<int> SendAsync(ReadOnlyMemory<byte> packet) => _inner.SendAsync(packet);
+        public async ValueTask<UdpReceiveResult> ReceiveAsync(CancellationToken cancellationToken)
+        {
+            using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken,
+                receiveFailure ? _invalidated.Token : CancellationToken.None);
+            try { return await _inner.ReceiveAsync(stop.Token); }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && _invalidated.IsCancellationRequested)
+            { throw new SocketException((int)SocketError.InvalidArgument); }
+        }
+        public void Dispose()
+        {
+            _inner.Dispose();
+            _invalidated.Dispose();
+            Disposed = true;
+        }
+    }
 
     private sealed class PacketServer : IDisposable
     {
@@ -239,6 +472,7 @@ public sealed class AudioStreamClientTests
         private long _outageStartTick;
         private int _disposed;
         public ConcurrentQueue<AudioPacket> Audio { get; } = new();
+        public ConcurrentQueue<PacketHeader> Traffic { get; } = new();
         public int Port { get; }
         public int HelloCount => Volatile.Read(ref _helloCount);
         public int AcceptedStatsSent => Volatile.Read(ref _acceptedStatsSent);
@@ -273,6 +507,7 @@ public sealed class AudioStreamClientTests
                     var packet = await _udp.ReceiveAsync(_stop.Token);
                     if (Volatile.Read(ref _dropTraffic) == 1) continue;
                     if (!Protocol.TryRead(packet.Buffer, [], out var header, out var body)) continue;
+                    Traffic.Enqueue(header);
                     if (header.Type == PacketType.Hello && HelloMessage.TryRead(body, out var hello) && hello.IsSupported)
                     {
                         Interlocked.Increment(ref _helloCount);
@@ -287,7 +522,9 @@ public sealed class AudioStreamClientTests
                     else if (header.Type == PacketType.Audio && _acceptedSessions.ContainsKey(header.Session) &&
                         AudioMessage.TryRead(body, header.Flags.HasFlag(PacketFlags.Silent), out ulong index, out var pcm))
                     {
-                        Audio.Enqueue(new AudioPacket(header.Session, index, header.Flags.HasFlag(PacketFlags.Silent), pcm.Length));
+                        Audio.Enqueue(new AudioPacket(header.Session, index, header.Flags.HasFlag(PacketFlags.Silent), pcm.Length,
+                            pcm.Length == 0 ? (short)0 : BinaryPrimitives.ReadInt16LittleEndian(pcm),
+                            pcm.Length == 0 ? (short)0 : BinaryPrimitives.ReadInt16LittleEndian(pcm[2..])));
                     }
                 }
             }

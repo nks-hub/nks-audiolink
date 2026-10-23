@@ -5,19 +5,45 @@ on:
 jobs:
   windows:
     runs-on: windows-latest
+    strategy:
+      matrix:
+        sdk: ['9.0.203', '9.0.318']
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m unittest discover -s tests -p test_release_verification.py
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '9.0.318'
+          dotnet-version: ${{ matrix.sdk }}
+      - name: Select SDK under test
+        run: |
+          dotnet new globaljson --sdk-version ${{ matrix.sdk }} --roll-forward disable --force
+          dotnet --version
       - run: dotnet build NksAudioLink.sln --configuration Release
       - run: dotnet test NksAudioLink.sln --configuration Release --no-build
   linux:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        sdk: ['9.0.203', '9.0.318']
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m unittest discover -s tests -p test_release_verification.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test tests/dashboard.test.cjs
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '9.0.318'
+          dotnet-version: ${{ matrix.sdk }}
+      - name: Select SDK under test
+        run: |
+          dotnet new globaljson --sdk-version ${{ matrix.sdk }} --roll-forward disable --force
+          dotnet --version
       - run: dotnet build src/NksAudioLink.Server/NksAudioLink.Server.csproj --configuration Release
       - run: dotnet test tests/NksAudioLink.Tests/NksAudioLink.Tests.csproj --configuration Release

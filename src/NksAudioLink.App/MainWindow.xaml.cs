@@ -6,6 +6,9 @@ using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
+using System.Windows.Media;
+using Color = System.Windows.Media.Color;
+using ColorConverter = System.Windows.Media.ColorConverter;
 using Microsoft.Win32;
 using NksAudioLink.Client;
 using NksAudioLink.Core;
@@ -19,6 +22,7 @@ public partial class MainWindow : Window
     {
         public string Server { get; init; } = "127.0.0.1";
         public int Port { get; init; } = 7355;
+        public int HttpPort { get; init; } = 7356;
         public string? DeviceId { get; init; }
         public bool Loopback { get; init; } = true;
         public bool VirtualCableMode { get; init; }
@@ -34,12 +38,18 @@ public partial class MainWindow : Window
     private AudioStreamClient? _activeClient;
     private Forms.NotifyIcon? _tray;
     private Forms.ToolStripMenuItem? _trayConnect;
+    private System.Drawing.Icon? _trayIcon;
+    private Forms.ContextMenuStrip? _trayMenu;
+    private readonly Queue<string> _activity = new();
+    private TaskCompletionSource? _streamFinished;
+    private bool _quitInProgress;
     private bool _closing;
     private bool _initializing = true;
     private string? _preferredDeviceId;
     private DateTime _lastStatsUtc;
     private DateTime _connectionStartedUtc;
     private readonly DispatcherTimer _healthTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+    private readonly DispatcherTimer _meterTimer = new(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(50) };
 
     public MainWindow()
     {
@@ -56,6 +66,14 @@ public partial class MainWindow : Window
         }
         catch (Exception ex) { DetailText.Text = "Could not read the Windows startup setting. " + ex.Message; }
         _initializing = false;
+        GainSlider.ToolTip = "100% keeps the original level. Higher gain may clip.";
+        _meterTimer.Tick += (_, _) =>
+        {
+            if (IsVisible && WindowState != WindowState.Minimized && _activeClient is { } client)
+                ShowSentLevels(client.Levels);
+        };
+        IsVisibleChanged += (_, _) => UpdateMeterTimer();
+        AddActivity("AudioLink started. Ready to connect.");
         _healthTimer.Tick += (_, _) =>
         {
             if (_streamStop is not null && !_streamStop.IsCancellationRequested &&
@@ -75,6 +93,7 @@ public partial class MainWindow : Window
             if (saved is null) return;
             ServerBox.Text = saved.Server;
             PortBox.Text = saved.Port.ToString();
+            HttpPortBox.Text = (saved.HttpPort is >= 1 and <= 65535 ? saved.HttpPort : 7356).ToString();
             GainSlider.Value = Math.Clamp(saved.GainPercent, 0, 200);
             LatencySlider.Value = Math.Clamp(saved.TargetLatencyMs, 10, 200);
             VirtualRadio.IsChecked = saved.VirtualCableMode;
@@ -93,6 +112,7 @@ public partial class MainWindow : Window
             {
                 Server = ServerBox.Text.Trim(),
                 Port = int.TryParse(PortBox.Text, out int port) ? port : 7355,
+                HttpPort = int.TryParse(HttpPortBox.Text, out int httpPort) && httpPort is >= 1 and <= 65535 ? httpPort : 7356,
                 DeviceId = DeviceCombo.SelectedValue as string,
                 Loopback = LoopbackRadio.IsChecked == true,
                 VirtualCableMode = VirtualRadio.IsChecked == true,
@@ -162,7 +182,14 @@ public partial class MainWindow : Window
 
     private async void Connect_Click(object sender, RoutedEventArgs e)
     {
-        if (_streamStop is not null) { _streamStop.Cancel(); return; }
+        if (_quitInProgress) return;
+        if (_streamStop is not null)
+        {
+            _streamStop.Cancel();
+            ConnectButton.IsEnabled = false;
+            SetStatus("Disconnecting", "Stopping capture and restoring the previous sound device.");
+            return;
+        }
         bool virtualMode = VirtualRadio.IsChecked == true;
         (AudioDevice Playback, AudioDevice Capture)? cablePair;
         try { cablePair = virtualMode ? VirtualCableRouting.FindInstalledPair() : null; }
@@ -203,10 +230,11 @@ public partial class MainWindow : Window
         }
         SaveSettings();
         _streamStop = new CancellationTokenSource();
+        _streamFinished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _lastStatsUtc = DateTime.MinValue;
         _connectionStartedUtc = DateTime.UtcNow;
         ConnectButton.Content = "Disconnect";
-        ConnectButton.Background = System.Windows.Media.Brushes.IndianRed;
+        ConnectButton.Background = new SolidColorBrush(Color.FromRgb(45, 62, 79));
         if (_trayConnect is not null) _trayConnect.Text = "Disconnect";
         SetStatus("Connecting", $"Server {config.Server}:{config.Port} · {device.Name}");
         var client = new AudioStreamClient(config);
@@ -236,6 +264,7 @@ public partial class MainWindow : Window
             serverRejected = true;
             SetStatus("Rejected", ex.Message);
         }
+        catch (OperationCanceledException) when (_streamStop.IsCancellationRequested) { }
         catch (Exception ex) { if (!_closing) SetStatus("Stream error", ex.Message); }
         finally
         {
@@ -248,12 +277,15 @@ public partial class MainWindow : Window
             _streamStop = null;
             _streamTask = null;
             _activeClient = null;
+            ResetStats();
             ServerCard.IsEnabled = SourceCard.IsEnabled = LatencySlider.IsEnabled = true;
+            ConnectButton.IsEnabled = !_quitInProgress;
             ConnectButton.Content = "Connect";
             ConnectButton.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(21, 127, 117));
             if (!serverRejected && StatusText.Text is not ("Stream error" or "Device restore failed"))
                 SetStatus("Disconnected", "Streaming has stopped.");
             if (_trayConnect is not null) _trayConnect.Text = "Connect";
+            _streamFinished.TrySetResult();
         }
     }
 
@@ -262,6 +294,7 @@ public partial class MainWindow : Window
         _lastStatsUtc = DateTime.UtcNow;
         SetStatus(stats.Accepted ? "Connected" : "Rejected",
             stats.Accepted ? "Sending audio: 48 kHz, 16-bit stereo." : "The server rejected this connection. Check its address, shared key, and whether another client is connected.");
+        if (!stats.Accepted) return;
         BufferText.Text = $"{stats.BufferMs} ms";
         SinkDelayText.Text = $"{stats.SinkDelayMs} ms";
         RttText.Text = $"{rtt:0.0} ms";
@@ -276,9 +309,144 @@ public partial class MainWindow : Window
 
     private void SetStatus(string status, string detail)
     {
+        bool changed = StatusText.Text != status || DetailText.Text != detail;
         StatusText.Text = status;
         DetailText.Text = detail;
+        var colors = status switch
+        {
+            "Connected" => ("#193E36", "#81E5BE"),
+            "Disconnected" => ("#263749", "#B6C6D7"),
+            "Connecting" or "Disconnecting" or "Waiting for server" or "Recovering audio device" => ("#453921", "#F6CE87"),
+            _ => ("#492B37", "#FFA7B8")
+        };
+        StatusBadge.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString(colors.Item1));
+        StatusText.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(colors.Item2));
+        if (status == "Connected") UpdateMeterTimer();
+        else
+        {
+            _meterTimer.Stop();
+            ResetStats();
+            ShowSentLevels(new AudioLevelSnapshot(-90, -90, -90, -90, false));
+        }
+        if (changed) AddActivity($"{status}: {detail}");
         if (_tray is not null) _tray.Text = ("NKS AudioLink: " + status)[..Math.Min(63, ("NKS AudioLink: " + status).Length)];
+    }
+
+    private void ResetStats()
+    {
+        foreach (var field in new[] { BufferText, SinkDelayText, RttText, EndToEndText, LostText, LateText, UnderrunText, OverrunText })
+            field.Text = "\u2014";
+    }
+
+    private void ShowSentLevels(AudioLevelSnapshot level)
+    {
+        SetChannelLevel(LeftMeterTrack, LeftRmsBar, LeftPeakMarker, LeftLevelText, level.LeftRmsDbfs, level.LeftPeakDbfs);
+        SetChannelLevel(RightMeterTrack, RightRmsBar, RightPeakMarker, RightLevelText, level.RightRmsDbfs, level.RightPeakDbfs);
+        SentClipText.Visibility = level.Clipping ? Visibility.Visible : Visibility.Hidden;
+    }
+
+    private void UpdateMeterTimer()
+    {
+        if (StatusText?.Text == "Connected" && IsVisible && WindowState != WindowState.Minimized)
+            _meterTimer.Start();
+        else _meterTimer.Stop();
+    }
+
+    private static void SetChannelLevel(Grid track, Border rmsBar, Border peakMarker, TextBlock value, double rmsDbfs, double peakDbfs)
+    {
+        // dB scale keeps low levels readable; the numeric readout covers the full -90 dBFS floor.
+        double width = track.ActualWidth;
+        rmsBar.Width = Math.Clamp((rmsDbfs + 60) / 60, 0, 1) * width;
+        peakMarker.Margin = new Thickness(Math.Clamp((peakDbfs + 60) / 60, 0, 1) * Math.Max(0, width - 2), 0, 0, 0);
+        peakMarker.Visibility = peakDbfs > -60 ? Visibility.Visible : Visibility.Hidden;
+        string text = rmsDbfs <= -90 ? "−∞" : rmsDbfs.ToString("0.0");
+        if (value.Text != text) value.Text = text;
+    }
+
+    private void AddActivity(string message)
+    {
+        // Avoid storing credentials even when an exception includes input text.
+        string secret = PskBox.Password.Trim();
+        if (secret.Length > 0) message = message.Replace(secret, "[redacted]", StringComparison.Ordinal);
+        message = message.Replace('\r', ' ').Replace('\n', ' ');
+        if (message.Length > 1000) message = message[..1000] + "…";
+        _activity.Enqueue($"{DateTime.Now:HH:mm:ss}  {message}");
+        while (_activity.Count > 200) _activity.Dequeue();
+        ActivityLog.Text = string.Join(Environment.NewLine, _activity);
+        ActivityLog.ScrollToEnd();
+    }
+
+    private void CopyLog_Click(object sender, RoutedEventArgs e)
+    {
+        try { System.Windows.Clipboard.SetText(ActivityLog.Text); }
+        catch (System.Runtime.InteropServices.COMException) { AddActivity("Could not copy: the clipboard is busy. Try again."); }
+    }
+
+    private void ClearLog_Click(object sender, RoutedEventArgs e) { _activity.Clear(); ActivityLog.Clear(); }
+    private void Minimize_Click(object sender, RoutedEventArgs e) => SystemCommands.MinimizeWindow(this);
+    private void Maximize_Click(object sender, RoutedEventArgs e)
+    {
+        if (WindowState == WindowState.Maximized) SystemCommands.RestoreWindow(this);
+        else SystemCommands.MaximizeWindow(this);
+    }
+    private void Hide_Click(object sender, RoutedEventArgs e) => Close();
+    private void Window_StateChanged(object? sender, EventArgs e)
+    {
+        bool maximized = WindowState == WindowState.Maximized;
+        MaximizeButton.Content = maximized ? "\uE923" : "\uE922";
+        MaximizeButton.ToolTip = maximized ? "Restore" : "Maximize";
+        WindowFrame.Margin = maximized ? new Thickness(8) : new Thickness(0);
+        UpdateMeterTimer();
+    }
+
+    private void About_Click(object sender, RoutedEventArgs e) => new AboutWindow { Owner = this }.ShowDialog();
+    private void Dashboard_Click(object sender, RoutedEventArgs e)
+    {
+        string host = ServerBox.Text.Trim();
+        if (Uri.CheckHostName(host) == UriHostNameType.Unknown ||
+            !int.TryParse(HttpPortBox.Text, out int port) || port is < 1 or > 65535)
+        {
+            AddActivity("Dashboard: enter a valid server host name and HTTP port (1–65535).");
+            System.Windows.MessageBox.Show(this, "Enter a valid server host name and HTTP port from 1 to 65535.", "Server dashboard", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        try
+        {
+            string url = new UriBuilder(Uri.UriSchemeHttp, host, port, "/").Uri.AbsoluteUri;
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
+            SaveSettings();
+            AddActivity($"Opened server dashboard at {url}");
+        }
+        catch (Exception ex) { AddActivity($"Could not open the server dashboard: {ex.Message}"); }
+    }
+    private async void Quit_Click(object sender, RoutedEventArgs e) => await QuitAsync();
+
+    private async Task QuitAsync()
+    {
+        if (_quitInProgress) return;
+        _quitInProgress = true;
+        ConnectButton.IsEnabled = false;
+        if (_trayConnect is not null) _trayConnect.Enabled = false;
+        SaveSettings();
+        _streamStop?.Cancel();
+        if (_streamFinished is { Task.IsCompleted: false })
+        {
+            SetStatus("Disconnecting", "Finishing audio cleanup before quitting…");
+            await _streamFinished.Task;
+        }
+        try { VirtualCableRouting.RestorePending(); }
+        catch (Exception ex)
+        {
+            _quitInProgress = false;
+            ConnectButton.IsEnabled = true;
+            if (_trayConnect is not null) _trayConnect.Enabled = true;
+            Show();
+            Activate();
+            SetStatus("Device restore failed", ex.Message);
+            return;
+        }
+        _closing = true;
+        Close();
     }
 
     private async void Discover_Click(object sender, RoutedEventArgs e)
@@ -380,15 +548,17 @@ public partial class MainWindow : Window
 
     private void InitTray()
     {
-        var menu = new Forms.ContextMenuStrip();
+        var menu = _trayMenu = new Forms.ContextMenuStrip();
         var open = new Forms.ToolStripMenuItem("Open");
         open.Click += (_, _) => Dispatcher.BeginInvoke(() => { Show(); WindowState = WindowState.Normal; Activate(); });
         _trayConnect = new Forms.ToolStripMenuItem("Connect");
         _trayConnect.Click += (_, _) => Dispatcher.BeginInvoke(() => Connect_Click(this, new RoutedEventArgs()));
         var quit = new Forms.ToolStripMenuItem("Quit");
-        quit.Click += (_, _) => Dispatcher.BeginInvoke(() => { _closing = true; Close(); });
+        quit.Click += (_, _) => Dispatcher.BeginInvoke(() => Quit_Click(this, new RoutedEventArgs()));
         menu.Items.AddRange([open, _trayConnect, new Forms.ToolStripSeparator(), quit]);
-        _tray = new Forms.NotifyIcon { Icon = System.Drawing.SystemIcons.Application, Text = "NKS AudioLink: Disconnected", ContextMenuStrip = menu, Visible = true };
+        using var iconStream = System.Windows.Application.GetResourceStream(new Uri("pack://application:,,,/Assets/AudioLink.ico")).Stream;
+        _trayIcon = new System.Drawing.Icon(iconStream, 32, 32);
+        _tray = new Forms.NotifyIcon { Icon = _trayIcon, Text = "NKS AudioLink: Disconnected", ContextMenuStrip = menu, Visible = true };
         _tray.DoubleClick += (_, _) => Dispatcher.BeginInvoke(() => { Show(); WindowState = WindowState.Normal; Activate(); });
     }
 
@@ -415,17 +585,10 @@ public partial class MainWindow : Window
             return;
         }
         SaveSettings();
-        _streamStop?.Cancel();
-        try { VirtualCableRouting.RestorePending(); }
-        catch (Exception ex)
-        {
-            e.Cancel = true;
-            _closing = false;
-            Show();
-            SetStatus("Device restore failed", ex.Message);
-            return;
-        }
         _healthTimer.Stop();
+        _meterTimer.Stop();
         _tray?.Dispose();
+        _trayMenu?.Dispose();
+        _trayIcon?.Dispose();
     }
 }

@@ -4,6 +4,14 @@ namespace NksAudioLink.Tests;
 
 public class DriftTests
 {
+    [Fact]
+    public void ControllerRejectsNonFiniteTarget()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => new DriftController(double.NaN));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new DriftController(double.PositiveInfinity));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new DriftController(double.NegativeInfinity));
+    }
+
     [Theory]
     [InlineData(200)]
     [InlineData(-200)]

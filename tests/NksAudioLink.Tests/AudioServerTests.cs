@@ -7,6 +7,71 @@ namespace NksAudioLink.Tests;
 
 public class AudioServerTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task MisalignedAudioFrameDoesNotStopServer(bool silent)
+    {
+        int port = FreePort();
+        using var stop = new CancellationTokenSource();
+        var server = new AudioServer(Config(port));
+        Task running = server.RunAsync(stop.Token);
+        using var client = Client(port);
+        try
+        {
+            await Send(client, PacketType.Hello, 11, HelloBody());
+            Assert.Equal(PacketType.Stats, (await Receive(client)).Type);
+
+            byte[] body = new byte[AudioMessage.PrefixSize + (silent ? 0 : Protocol.PcmBytesPerFrame)];
+            AudioMessage.Write(body, 0, Protocol.SamplesPerFrame,
+                silent ? [] : new byte[Protocol.PcmBytesPerFrame], silent);
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(body, 1);
+            await Send(client, PacketType.Audio, 11, body, silent ? PacketFlags.Silent : PacketFlags.None);
+            await Send(client, PacketType.Ping, 11, new byte[8]);
+            Assert.Equal(PacketType.Pong, (await Receive(client, PacketType.Pong)).Type);
+            Assert.False(running.IsCompleted);
+        }
+        finally
+        {
+            stop.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => running);
+        }
+    }
+
+    [Fact]
+    public async Task MisalignedTargetBufferIsRejectedWithoutOpeningSink()
+    {
+        int port = FreePort();
+        int opens = 0;
+        using var stop = new CancellationTokenSource();
+        var server = new AudioServer(Config(port), _ =>
+        {
+            opens++;
+            return new NullSink();
+        });
+        Task running = server.RunAsync(stop.Token);
+        using var client = Client(port);
+        try
+        {
+            byte[] hello = HelloBody();
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(hello.AsSpan(7), 11);
+            await Send(client, PacketType.Hello, 11, hello);
+            var rejected = await Receive(client);
+            Assert.Equal(PacketType.Reject, rejected.Type);
+            Assert.Equal((byte)RejectReason.UnsupportedFormat, rejected.Body[0]);
+            Assert.Equal(0, opens);
+
+            await Send(client, PacketType.Hello, 11, HelloBody());
+            Assert.Equal(PacketType.Stats, (await Receive(client)).Type);
+            Assert.Equal(1, opens);
+        }
+        finally
+        {
+            stop.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => running);
+        }
+    }
+
     [Fact]
     public async Task HelloBusyTakeoverAndByeManageSinkLifecycle()
     {
