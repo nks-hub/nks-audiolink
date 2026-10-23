@@ -4,7 +4,7 @@ The server is a C#/.NET 9 console application. On Linux, it writes directly to A
 
 ## Requirements
 
-- The build machine needs .NET SDK 9.0.318 or a later patch in the same series, as specified by `global.json`. The target needs `libasound.so.2`, systemd, an `audio` group, and a working ALSA device. A `--self-contained` build does not require a .NET runtime on the target.
+- The build machine needs .NET SDK 9.0.203 or later in the 9.0 series, as specified by `global.json`. The target needs `libasound.so.2`, systemd, an `audio` group, and a working ALSA device. A `--self-contained` build does not require a .NET runtime on the target.
 - The target must accept UDP on the selected port, 7355 by default. Allow traffic only from a trusted LAN or VPN. PCM audio is not encrypted.
 - Before changing the host, check that another application has not reserved the sound device. The installer does not open the device or start or restart the service.
 
@@ -31,6 +31,33 @@ The installer creates the unprivileged `nks-audiolink` user in the `audio` group
 Edit `/etc/nks-audiolink/server.json` before the first start. The sample allows only `127.0.0.0/8`. Set `allowCidrs` to the range of trusted clients. Do not use `0.0.0.0/0` without considering who can reach the server. To authenticate packets, set the same `pskBase64` on the server and client. The key must contain at least 16 random bytes. Keep configurations containing keys out of Git, and restrict access to root and the service group.
 
 Set `sink` to `alsa:default` or, for example, `alsa:plughw:CARD=Device,DEV=0`. Find the ALSA identifier in `/proc/asound/cards` or the output of `NksAudioLink.Server devices`. `plughw` lets ALSA convert the format when a device does not directly accept stereo S16_LE at 48 kHz. The `audio` group must have access to the device. For a removable USB device, prefer a stable ALSA identifier over a card number, which can change after a reboot.
+
+### Optional server dashboard
+
+The server includes a read-only web monitor and `GET /api/stats`. HTTP is disabled by default (`httpPort: 0`). To enable local monitoring, add these fields to the server configuration:
+
+![Server dashboard with stereo levels and history](screenshots/server-dashboard.png)
+
+Interface preview with controlled example values; validation measurements are recorded separately.
+
+```json
+"httpPort": 7356,
+"httpBindAddress": "127.0.0.1"
+```
+
+After restarting the service, open `http://127.0.0.1:7356/` on the server, or forward that port over SSH. For a browser on another LAN machine, set `httpBindAddress` to the server's actual LAN IPv4 address, include the browser's subnet in `allowCidrs`, and allow the selected TCP port in the host firewall. Use an explicit address; wildcard bindings are rejected. Loopback monitoring accepts the loopback IP or `localhost` Host header. The desktop app's **Open server monitor** button uses the entered server address and its separate HTTP port, 7356 by default.
+
+For a local diagnostic instance:
+
+```sh
+./NksAudioLink.Server run --sink null --port 17355 --http-port 7356
+```
+
+CLI values override the configuration file regardless of argument order. The dashboard refreshes once per second and shows server uptime, session duration, buffer and output queue occupancy, drift correction, and lost/late/underrun/overrun/duplicate counters. Stereo meters measure actual PCM after server playout processing and before the audio-device write: a 300 ms RMS window, peaks held for one second and clipping indication. These are digital dBFS readings, not physical speaker volume. The stereo level history and expandable buffer graph each retain up to 60 samples in the browser; they are not persisted on the server. **Pause updates** stops sampling and labels retained history; live meters are cleared to avoid implying a current signal. Connection failures and new sessions clear stale measurements. Counters reset with each session. Server queue values are not end-to-end latency measurements.
+
+HTTP access uses the same `allowCidrs` as audio. The UDP shared key is neither returned nor used as an HTTP password. There are no web controls that change the server. Keep HTTP within the intended LAN or an SSH tunnel; it does not provide TLS or user login. The self-contained server includes the required ASP.NET Core runtime. A framework-dependent server needs both .NET and ASP.NET Core 9 runtimes.
+
+### Service control
 
 ```sh
 systemctl enable --now nks-audiolink

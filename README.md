@@ -11,9 +11,9 @@
 
 AudioLink provides a Windows WPF app, a command-line client and a Linux systemd service. Audio uses 48 kHz, 16-bit stereo samples in 5 ms frames. The server runs without PulseAudio, PipeWire or a desktop session. The transport is intended for a trusted LAN or VPN; physical end-to-end latency has not been measured.
 
-![NKS AudioLink Windows app with connection controls and live statistics](docs/screenshots/client.png)
+![NKS AudioLink borderless Windows app](docs/screenshots/client-preview.png)
 
-The app is connected to a localhost diagnostic server in this screenshot. Its null output does not play through a physical sound card.
+Disconnected interface preview rendered without opening audio devices. The optional [server dashboard](docs/INSTALL.md#optional-server-dashboard) adds live monitoring in a browser.
 
 ## Features
 
@@ -21,6 +21,8 @@ The app is connected to a localhost diagnostic server in this screenshot. Its nu
 - 🔊 **Linux audio output** - direct ALSA playback as an unprivileged systemd service. WAV and null outputs are available for diagnostics.
 - ⏱️ **Timing and recovery** - a jitter buffer absorbs short variations in packet arrival. Clock drift correction and silent frames keep the audio timeline running. The client reconnects after server outages and recreates capture after a device error.
 - 📊 **Controls and statistics** - server discovery, target buffer, live gain adjustment, a system tray menu and statistics for buffer fill, output queue delay, network RTT, lost and late frames, underruns and overruns.
+- 🖥️ **Desktop and web monitoring** - a compact borderless Windows app with a waveform icon, About and activity log; an optional read-only server dashboard with buffer history and a JSON statistics API on a separately configured HTTP port (suggested: 7356).
+- 🎚️ **Stereo signal meters** - actual PCM RMS levels, held peaks and clipping indicators in the client and server dashboard. The web monitor includes a 60-sample stereo level history.
 - 🔒 **Access control** - `allowCidrs` restricts client addresses. An optional shared key authenticates packets with HMAC. Audio is not encrypted.
 
 [VB-CABLE](https://vb-audio.com/Cable/) is a separate VB-Audio driver. AudioLink does not bundle it; ordinary WASAPI loopback capture does not require it.
@@ -30,7 +32,7 @@ The app is connected to a localhost diagnostic server in this screenshot. Its nu
 - Windows x64 for the WPF app and CLI client (WASAPI capture)
 - Linux x64 with ALSA for the server; no PulseAudio, PipeWire or desktop session needed
 - systemd for running the server as a service
-- Portable packages bundle .NET runtime 9.0.20; building from source needs .NET SDK 9.0.318 or a later patch
+- Portable packages bundle .NET runtime 9.0.20; building from source needs .NET SDK 9.0.203 or later within the 9.0 series
 - Optional: [VB-CABLE](https://vb-audio.com/Cable/) for the virtual-device capture mode
 - A trusted LAN or VPN between client and server
 
@@ -76,13 +78,15 @@ The server accepts one active session. The default UDP port is `7355`. With its 
 
 ## Development
 
-Use .NET SDK **9.0.318** or a later patch allowed by [global.json](global.json). On Windows:
+Use .NET SDK **9.0.203 or later in the 9.0 series**, as allowed by [global.json](global.json). The highest installed compatible stable SDK is selected. CI tests both 9.0.203 and the release SDK, 9.0.318. On Windows:
 
 ```powershell
 dotnet build NksAudioLink.sln -c Release
 dotnet test NksAudioLink.sln -c Release
 dotnet run --project src/NksAudioLink.App
 ```
+
+If Visual Studio reports `NETSDK1141`, run `dotnet --list-sdks` and `dotnet --version` from the repository root. Install a compatible SDK if none is listed, then reopen the solution. SDK 9.0.203 is supported; SDK 9.0.318 is not required for a local build. See Microsoft's [SDK selection rules](https://learn.microsoft.com/en-us/dotnet/core/tools/global-json#rollforward).
 
 To publish the Linux x64 server:
 
@@ -96,14 +100,14 @@ dotnet publish src/NksAudioLink.Server/NksAudioLink.Server.csproj \
 
 | Check | Result and scope |
 |---|---|
-| Automated tests | 39 portable Core/server/queue tests and 7 Windows UDP integration tests passed. Core coverage: **86.93% of lines**, 76.01% of branches. |
+| Automated tests | The 2026-10-23 review passed 80 portable Core/server/HTTP/queue/meter tests, 26 Windows client/CLI tests, 9 dashboard tests and 22 package-verifier tests. Current Core coverage is **90.48% of lines** and **82.33% of branches**. |
 | LAN and physical ALSA | The .NET 9.0.20 server and Windows client ran for **600 seconds with a 30 ms target buffer**. All 60 client samples showed zero lost or late frames, underruns and overruns. ALSA was RUNNING in all 120 samples; the server process and session remained unchanged. A separate 10 ms run accumulated late frames. |
 | Tone and virtual mode | A 440 Hz Windows-to-Linux WAV test lasted 5.095 seconds with RMS 8,484 and no overruns or late frames. CABLE Input to CABLE Output transport was also confirmed by WAV analysis. |
 | UI latency estimate | One live observation was **about 74 ms**: 10 ms WASAPI capture, about 15 ms client queue, a 5 ms frame, about 0.25 ms half-RTT, 25 ms server buffer and 19 ms ALSA queue delay. This is a sum of known stages, not a physical end-to-end measurement. |
 | Measured LAN stage | Nine clicks took **22.96–37.88 ms**, median **31.39 ms**, from the Windows UDP send call to a Linux WAV write. This excludes WASAPI capture, ALSA playback and the receiver. |
 | Server CPU | The 600-second physical ALSA run at 30 ms used **1.262% of one CPU core**, compared with about 3% before tuning. An isolated null-output test used 1.40%. |
 
-The owner confirmed clean playback on the receiver. Video synchronization, physical network disconnection and PC sleep/resume checks remain. [Validation details](docs/VALIDATION.md) distinguish measurements from estimates; [TODO.md](TODO.md) tracks the remaining phases.
+The owner previously confirmed clean playback on the receiver. The physical ALSA/latency figures above are from the earlier 2026-10-02 run. The 2026-10-23 review reproduced and fixed a Windows sleep/resume socket failure, then verified automatic reconnection after real S3. A newer ten-minute run at a 40 ms target used 1.182% of one core but recorded one underrun; it is not a zero-error acceptance pass. Video synchronization and physical network disconnection remain unverified. [Validation details](docs/VALIDATION.md) distinguish measurements from estimates; [TODO.md](TODO.md) tracks the remaining phases.
 
 ## Contributing
 
@@ -114,6 +118,19 @@ Contributions are welcome! For major changes, please open an issue first.
 3. Commit your changes (`git commit -m 'feat: description'`)
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
+
+## Alternatives and scope
+
+This comparison was checked against upstream documentation on 2026-10-23. It compares functionality, not measured latency or sound quality on identical hardware.
+
+| Project | Main use | Difference relevant to AudioLink |
+|---|---|---|
+| NKS AudioLink | One Windows source to one Linux ALSA output | WASAPI loopback needs no additional virtual driver; optional VB-CABLE routing, recovery, and local desktop/web diagnostics. Fixed 48 kHz, 16-bit stereo; no synchronized multiroom playback. |
+| [Scream](https://github.com/duncanthrax/scream) | A Windows virtual sound device sending PCM over the network | Uses a virtual device driver and supports multicast or unicast. Its Unix receiver supports ALSA, PulseAudio and JACK. Driver deployment is an extra setup step compared with AudioLink loopback. |
+| [Snapcast](https://github.com/snapcast/snapcast) | Synchronized multiroom playback | Organizes sources and groups of time-synchronized receivers. Prefer this architecture when several rooms must play together; AudioLink focuses on a single receiver. |
+| [VBAN / Voicemeeter](https://vb-audio.com/Voicemeeter/vban.htm) | Audio routing and network streams within a broader mixer ecosystem | VBAN provides a public UDP protocol with multiple sample formats/rates and multichannel audio. AudioLink offers a smaller fixed-format Windows-to-ALSA workflow and uses its own incompatible wire protocol. See the [VBAN specification](https://vb-audio.com/Voicemeeter/VBANProtocol_Specifications.pdf). |
+
+The practical development priorities are reliable recovery, clear diagnostics, straightforward setup and honest latency reporting. Multicast, multiroom synchronization, per-application capture, additional formats and interoperable transports are separate future features; they are not implied by the new dashboard.
 
 ## Support
 

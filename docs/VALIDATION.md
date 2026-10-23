@@ -1,5 +1,44 @@
 # Validation
 
+## Review and development, 2026-10-23
+
+The reported NETSDK1141 was reproduced with the installed SDK 9.0.203: `global.json` required 9.0.318 with `latestPatch`. Local selection now permits stable SDK 9.0.203 or later within 9.0 (`latestFeature`). CI explicitly selects both the minimum and release SDK; release packaging explicitly selects 9.0.318. Remote CI and release-artifact verification for the current changes are pending.
+
+The review covered SDK/build configuration, packet parsing, jitter recovery, client sender/receiver lifecycle, configuration/CLI precedence, desktop state/shutdown, and the new optional HTTP monitor. Regressions reproduced a server crash on a misaligned audio index, output opening on unsupported buffer sizes, and stalled playback after consecutive packet loss. Those cases now pass. Additional fixes cover delayed capture callbacks, timer arithmetic for long streams, concurrent connection state, invalid numeric/CIDR settings, and orderly test-tone rejection.
+
+| Check | Current evidence |
+|---|---|
+| Debug build | Visual Studio 2022 MSBuild rebuilt all seven projects successfully with SDK 9.0.203 into an isolated artifacts directory |
+| Release build | All seven projects built with zero warnings and zero errors |
+| Automated .NET tests | 80 portable tests and 26 Windows client/CLI tests passed; includes real local UDP and HTTP requests, sender clock-discontinuity recovery, socket recreation after send/receive invalidation and a CLI subprocess rejection test |
+| Core coverage | A fresh Release run with `--collect "XPlat Code Coverage"` measured 90.48% line coverage and 82.33% branch coverage; the required 80% line coverage gate passes |
+| Dashboard regressions | `node --test tests/dashboard.test.cjs`: 9 passed; rapid pause/resume, stale requests, disconnect/session reset, access-denied recovery, stereo meters, history and invalid level samples |
+| Stereo PCM meters | Nine Core tests verify RMS mathematics, stereo independence, silence, peak hold/decay, clipping and allocation behavior. Client integration compares post-gain sent PCM; server integration compares the exact samples presented to the sink. Real client and server meters both reacted to live audio. |
+| Package-verifier regressions | 22 Python tests passed on Windows and Linux, including archive allowlists, runtime inspection, path/permission checks and reproducible archive bytes |
+| Browser smoke | Chromium against local Kestrel: desktop/mobile layout, single polling chain, paused/offline/403 states, reconnect, session clearing, text injection, no JavaScript errors or external requests |
+| Native desktop UI | Redesigned 960×720 layout and minimum 800×640 verified with real controls: persistent connection actions and live metrics, native caption/edge hit testing, maximize/restore/minimize, keyboard slider operation and focus indicators. The deployed candidate connected to the physical receiver; About/MIT links, gain changes and orderly Quit were checked. |
+| Linux standalone | Self-contained linux-x64 with .NET and ASP.NET Core 9.0.20 ran on Ubuntu 22.04/WSL without `dotnet`; HTTP/API, local UDP-to-WAV, recovery after a 200-frame packet gap, BYE and clean SIGINT exit verified |
+| Windows standalone | App and CLI published as self-contained single-file win-x64 executables; bundle inspection confirms both .NET and WindowsDesktop 9.0.20. This inspection caught and corrected an initially mixed CLI runtime package. CLI help, discovery, busy rejection and takeover were exercised; the new desktop app replaced the previous instance through orderly Quit. |
+| Package audit | NuGet reported no known vulnerable direct or transitive packages using the configured feed. This is not a runtime or operating-system security audit. |
+
+The desktop preview and web screenshot are under `docs/screenshots`. They use a disconnected desktop and controlled example web values, without private device/address data; they are interface illustrations, not benchmark results. The existing HMAC protocol authenticates packets but does not encrypt audio or provide a complete replay-protection mechanism. The web monitor is read-only and restricted by `allowCidrs`; it has no TLS/login and must remain on the intended LAN or an SSH tunnel. Its suggested TCP port is **7356**, separate from UDP audio on 7355; HTTP remains disabled in the default server configuration.
+
+### Additional live checks, 2026-10-23
+
+- A new five-second Windows-to-Linux WAV test used a separate receiver port and the deployed server binary. Goertzel analysis confirmed a dominant 440 Hz tone (energy over 2.5 million times the strongest tested comparison frequency), duration **5.075 s**, RMS **842.03** at gain 0.1. Reported losses, late frames, underruns and overruns were zero.
+- The isolated recovery harness used actual WASAPI loopback capture, including nonzero PCM. After a **10,008 ms** proxy outage it resumed within **1,977 ms**; receiver restart took **1,117 ms** and a 200 ms sender-thread pause took **107 ms** from pause end to accepted responses and twenty resumed frames. These controlled interruptions are not a physical cable test.
+- Immediate busy rejection exposed a NAudio capture-start/stop race that could hang disposal. The original implementation reproduced a timeout; the corrected implementation completed **30 of 30** real-WASAPI rejection attempts in **10–60 ms**. The packaged CLI then rejected a busy physical receiver promptly while the first client continued streaming.
+- Live takeover replaced the existing session and made the previous desktop client stop with an explanatory rejection. The temporary client stopped after its requested duration; the receiver released its ALSA device. Discovery found the deployed service.
+- Replacing/restarting the systemd service preserved its configuration and restored the existing client session in **1.197 s**, **1.047 s** after changing HTTP to 7356, and **1.001 s** after the dashboard update. Each observation includes service restart and HTTP polling time.
+- A real Windows S3 test exposed socket error **10022**: the connected UDP socket became invalid and the original client stopped. The fix recreates the socket and capture session. A subsequent real S3 cycle resumed streaming automatically **11.72 s after the Windows wake event**, with zero error counters in the observed resumed session. The first diagnostic sleep woke through the owned wake timer; the successful recovery cycle woke through the power button. The five-second requirement in the original plan applies to server restart; it is not asserted for Windows wake.
+- A first interrupted live run at a 30 ms buffer recorded one lost/late frame and one underrun during a **30.6 ms** packet-arrival gap. This run is not a zero-underrun pass. The current machine was changed to a 40 ms target for the subsequent stability check; the product default remains 30 ms.
+- The subsequent **600.002 s** run at 40 ms, before adding the meters, used **1.1817% of one core**. All 121 ALSA samples were RUNNING, with one unchanged process/session, but one lost/late frame and underrun occurred. The closed session reported a maximum packet-arrival gap of **48.8 ms**. This also fails the zero-underrun gate; no adapter settings were changed based on that observation alone.
+- The generated flash/click reference has 60 fps video, exact 48 kHz PCM and 0.0208 ms source alignment. Container timestamps, all flash frames and PCM round-trip were verified. The owner reported that the subjective playback check has **not yet been performed**.
+
+Physical cable disconnection and the owner's flash/click assessment remain open. The historical measurements below retain their original dates and scope.
+
+## Earlier hardware and deployment evidence
+
 Status as of 2026-10-02. CI for revision `af12a5b` passed with 39 portable tests and 7 Windows client tests. The Windows app, CLI, server and documentation are in English. Local configuration and full logs remain outside Git.
 
 | Area | Result |
@@ -51,8 +90,8 @@ The second run used the updated Windows client on .NET 9.0.20 and the default **
 ## Remaining hardware checks
 
 - Have the owner assess flash and click synchronization using the prepared test video. Clean audio has already been confirmed.
-- Unplug the PC network cable for ten seconds and reconnect it; separately suspend and wake the PC. Observe session recovery and output-device release.
+- Unplug the PC network cable for ten seconds and reconnect it. Observe session recovery and output-device release. Real Windows S3 recovery was tested and fixed on 2026-10-23 as described above.
 
 Physical end-to-end latency remains unmeasured. The original plan uses a calculation, a timestamped LAN/WAV test and the owner's video assessment; an independent measurement through the receiver is not an additional release gate.
 
-Cable disconnection and PC suspension require the owner's participation. See [TODO.md](../TODO.md) for phase status.
+Cable disconnection requires someone at the PC. See [TODO.md](../TODO.md) for phase status.

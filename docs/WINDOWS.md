@@ -1,19 +1,25 @@
 # Windows client
 
-The desktop application requires Windows 10 or later. The `win-x64` release includes the .NET runtime. Building from source requires .NET SDK 9.0.318 or a later patch in the same series, as specified by `global.json`:
+The desktop application requires Windows 10 or later. The `win-x64` release includes the .NET runtime. Building from source requires .NET SDK 9.0.203 or later in the 9.0 series, as specified by `global.json`:
 
 ```powershell
 dotnet run --project src/NksAudioLink.App
 ```
 
-Enter the server address or click **Find**, choose an audio source, set **Gain** and **Target buffer**, then click **Connect**. The target buffer controls the server jitter buffer size. Gain can be changed while streaming; disconnect before changing the other settings. The status panel shows estimated delay, server buffer occupancy, output queue delay, network round-trip time, and counts of lost and late frames, underruns, and overruns.
+Enter the server address or click **Find**, choose an audio source, set **Gain**, then click **Connect**. Expand **Buffer & startup** to change **Target buffer**, which controls the server jitter buffer size. Gain can be changed while streaming; disconnect before changing the other settings. Connection controls stay at the top, and the right-hand status panel shows estimated delay, server buffer occupancy, output queue delay, network round-trip time, and counts of lost and late frames, underruns, and overruns.
 
 Closing the window leaves the application in the notification area. Its icon menu lets you connect, disconnect, reopen the window, or quit. **Start with Windows** creates a startup entry only for the current user. Settings are stored in `%AppData%\NksAudioLink\settings.json`; the shared key is not saved there.
+
+The compact borderless window has its own minimize, maximize/restore, and close buttons. Drag its title bar to move it, double-click the title bar to maximize, and use its edges to resize. Closing still hides it in the tray; **Quit AudioLink** waits for stream shutdown and default-device restoration. The app, executable and tray share the AudioLink waveform icon. **About** shows the installed version and links to documentation, issue reporting, the MIT license and third-party notices.
+
+The activity log keeps a bounded history of status changes for the current app session and can be copied for troubleshooting. It is not a recording of the audio stream. Live statistics are cleared when the connection ends or becomes unavailable. **Open server monitor** opens the server's optional HTTP monitor using its separate HTTP port, initially **7356**; [enable the server dashboard](INSTALL.md#optional-server-dashboard) first. UDP audio continues to use port 7355.
+
+**Sent level** shows separate left/right RMS bars in dBFS, one-second held peak markers and a clipping indicator. It measures actual PCM after the client gain adjustment and before UDP transmission; it does not measure the receiver's analog output. RMS uses a 300 ms window. Silent packets let the meters decay, and a stopped stream clears them. The visible client updates these meters every 50 ms; hidden/minimized windows stop UI polling. Gain and both meters stay visible above the footer even when the setup area scrolls.
 
 ## Audio modes
 
 - **All PC audio:** WASAPI loopback from the selected playback device. Audio remains available on the local output.
-- **Virtual audio device:** captures CABLE Output and sets the Windows default playback device to CABLE Input while connected. Requires a separately installed VB-CABLE driver.
+- **Virtual cable:** captures CABLE Output and sets the Windows default playback device to CABLE Input while connected. Requires a separately installed VB-CABLE driver.
 - **Other input:** captures the selected recording device without changing the Windows default playback device.
 
 Some Windows applications use a fixed playback device. To route them through the virtual mode, select the system default or CABLE Input in those applications.
